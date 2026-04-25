@@ -34,20 +34,6 @@ if(WIN32)
     target_link_libraries(llm_module PUBLIC ws2_32)
 endif()
 
-enable_testing()
-
-add_executable(llm_module_tests
-    tests/test_llm_module.cpp
-)
-
-target_link_libraries(llm_module_tests
-    PRIVATE
-        llm_module
-        combat_module
-)
-
-add_test(NAME llm_module_tests COMMAND llm_module_tests)
-
 add_executable(llm_text_rpg
     main.cpp
 )

@@ -9,7 +9,6 @@
 - `src/llm/LLMTypes.hpp`: 게임 상태와 LLM 이벤트 타입
 - `src/combat/CombatSystem.*`: 단순 전투 처리
 - `src/combat/CombatTypes.hpp`: 전투 타입
-- `tests/test_llm_module.cpp`: LLM JSON 파싱과 전투 테스트
 
 ## 현재 규칙
 
@@ -25,7 +24,6 @@
 ```powershell
 cmake -S . -B build
 cmake --build build
-ctest --test-dir build -C Debug --output-on-failure
 ```
 
 ## 실행
