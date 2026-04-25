@@ -1,13 +1,10 @@
-#include "llm/LLMConfig.hpp"
-#include "llm/LLMService.hpp"
-#include "llm/OllamaClient.hpp"
+#include "combat/CombatSystem.hpp"
+#include "llm/LLM.hpp"
 
 #include <algorithm>
 #include <cctype>
-#include <filesystem>
 #include <iostream>
 #include <limits>
-#include <memory>
 #include <string>
 #include <vector>
 
@@ -19,12 +16,12 @@ GameState makeInitialState()
 {
     GameState state;
     state.turnNumber = 1;
-    state.currentScene = "안개 낀 숲길 안쪽에서 낮은 으르렁거림과 발소리가 가까워진다.";
-    state.player.hp = 84;
-    state.player.maxHp = 100;
+    state.currentScene = "안개 낀 숲길 갈림목에 부서진 순찰병의 표식과 오래된 발자국이 남아 있다.";
+    state.player.hp = 999;
+    state.player.maxHp = 999;
     state.player.level = 1;
-    state.player.attack = 10;
-    state.player.defense = 4;
+    state.player.attack = 9;
+    state.player.defense = 0;
     state.player.gold = 12;
     state.player.exp = 0;
     state.player.inventory = {"낡은 철검", "작은 빵", "횃불"};
@@ -39,7 +36,7 @@ GameState makeInitialState()
     };
     state.memory.recentEvents = {
         "플레이어는 국경 마을에서 실종된 순찰병 이야기를 들었다.",
-        "대장장이는 숲 안쪽에서 이상한 종소리가 들렸다고 말했다.",
+        "대장장이는 숲 안쪽에서 이상한 종소리와 깨진 등불을 보았다고 말했다.",
     };
     state.memory.importantChoices = {
         "플레이어는 보상을 먼저 요구하지 않고 수색을 돕기로 했다.",
@@ -115,6 +112,24 @@ void printEvent(const GameEvent& event)
     }
 }
 
+void printCombatResult(const textrpg::combat::CombatResult& result)
+{
+    std::cout << "\n전투 결과:\n";
+    for (const auto& turn : result.turns) {
+        const auto actor = turn.actor == textrpg::combat::CombatActor::Player ? "플레이어" : result.monster.name;
+        const auto target = turn.actor == textrpg::combat::CombatActor::Player ? result.monster.name : "플레이어";
+        std::cout << "  " << actor << "의 때리기 -> " << target
+                  << "에게 " << turn.damage << " 피해"
+                  << " (남은 HP " << turn.targetHpAfter << ")\n";
+    }
+
+    if (result.winner == textrpg::combat::CombatWinner::Player) {
+        std::cout << "  승리: 플레이어\n";
+    } else {
+        std::cout << "  패배: 플레이어\n";
+    }
+}
+
 bool isExitCommand(const std::string& input)
 {
     return input == "q" || input == "quit" || input == "exit" || input == "종료";
@@ -181,6 +196,27 @@ void pushLimited(std::vector<std::string>& values, const std::string& value, std
     }
 }
 
+void resolveCombat(GameState& state, const GameEvent& event)
+{
+    if (event.eventType != EventType::Combat || !event.monster.has_value()) {
+        return;
+    }
+
+    textrpg::combat::CombatSystem combatSystem;
+    auto player = textrpg::combat::makeDefaultPlayer();
+    player.hp = state.player.hp;
+    auto monster = textrpg::combat::makeDefaultMonster(event.monster->name);
+
+    const auto result = combatSystem.run(player, monster);
+    printCombatResult(result);
+
+    state.player.hp = result.player.hp;
+    pushLimited(
+        state.memory.recentEvents,
+        "전투 결과: 플레이어가 때리기만 사용해 " + result.monster.name + "를 쓰러뜨렸다.",
+        5);
+}
+
 void applyEventToState(GameState& state, const GameEvent& event, const std::string& playerInput)
 {
     state.currentScene = event.sceneText;
@@ -192,7 +228,9 @@ void applyEventToState(GameState& state, const GameEvent& event, const std::stri
         state.world.decisionHint = event.decisionHint;
     }
 
-    state.player.hp = clampInt(state.player.hp + event.statChanges.hp, 0, state.player.maxHp);
+    if (event.eventType != EventType::Combat) {
+        state.player.hp = clampInt(state.player.hp + event.statChanges.hp, 0, state.player.maxHp);
+    }
     state.player.gold = std::max(0, state.player.gold + event.statChanges.gold);
     state.player.exp = std::max(0, state.player.exp + event.statChanges.exp);
 
@@ -203,6 +241,14 @@ void applyEventToState(GameState& state, const GameEvent& event, const std::stri
     pushLimited(state.memory.importantChoices, "턴 " + std::to_string(state.turnNumber) + " 선택: " + playerInput, 5);
     pushLimited(state.memory.recentEvents, "턴 " + std::to_string(state.turnNumber) + " 결과: " + event.memoryNote, 5);
 
+    if (event.eventType == EventType::Combat && event.monster.has_value()) {
+        pushLimited(
+            state.memory.recentEvents,
+            "전투 후속 지침: 다음에 플레이어가 " + event.monster->name
+                + "와 맞서거나 공격하면 새 적을 만들지 말고 전투 결과와 그 직후 발견을 묘사한다.",
+            5);
+    }
+
     ++state.turnNumber;
 }
 
@@ -210,32 +256,19 @@ void applyEventToState(GameState& state, const GameEvent& event, const std::stri
 
 int main(int argc, char** argv)
 {
-    const auto configPath = std::filesystem::path("config") / "llm.toml";
-    const auto loadedConfig = LLMConfigLoader::load(configPath);
-
-    const std::string model = argc >= 2 ? argv[1] : loadedConfig.ollama.model;
+    LLMOptions llmOptions;
+    llmOptions.model = argc >= 2 ? argv[1] : "llama3.2:latest";
     std::vector<std::string> scriptedInputs = argc >= 3 ? splitScriptedInputs(argv[2]) : std::vector<std::string> {};
     std::size_t scriptedIndex = 0;
 
-    OllamaConfig config = loadedConfig.ollama;
-    config.model = model;
-
-    auto client = std::make_shared<OllamaClient>(config);
-    LLMService service(
-        client,
-        ContextBuilder(loadedConfig.prompt),
-        PromptBuilder(),
-        LLMOutputParser(),
-        LLMEventValidator(loadedConfig.validation),
-        LLMFallbackFactory(),
-        LLMLogger("logs", loadedConfig.debug));
+    LLM llm(llmOptions);
 
     GameState state = makeInitialState();
     std::vector<std::string> lastChoices;
 
     std::cout << "LLM Text RPG demo 시작\n";
-    std::cout << "model: " << model << "\n";
-    std::cout << "전투 계산, 인벤토리 상세 처리, 세이브/로드는 아직 데모 범위 밖입니다.\n";
+    std::cout << "model: " << llmOptions.model << "\n";
+    std::cout << "전투는 별도 모듈에서 처리합니다. 현재 스킬은 양쪽 모두 때리기만 있습니다.\n";
 
     while (state.player.hp > 0) {
         printStatus(state);
@@ -257,8 +290,9 @@ int main(int argc, char** argv)
             playerInput = "주변을 살핀다";
         }
 
-        const auto event = service.generateEvent(state, playerInput);
+        const auto event = llm.generateEvent(state, playerInput);
         printEvent(event);
+        resolveCombat(state, event);
         applyEventToState(state, event, playerInput);
         lastChoices = event.choices;
 

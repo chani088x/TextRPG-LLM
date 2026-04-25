@@ -48,7 +48,7 @@ struct Item {
     int value = 0;
 };
 
-// LLM이 제안할 수 있는 상태 변화다. 최종 적용 전 Validator에서 범위를 제한한다.
+// LLM이 제안할 수 있는 상태 변화다. 파싱 단계에서 안전 범위로 제한한다.
 struct StatChanges {
     int hp = 0;
     int gold = 0;
@@ -105,26 +105,6 @@ struct GameState {
     PlayerSnapshot player;
     WorldState world;
     StoryMemory memory;
-};
-
-// ContextBuilder가 긴 상태를 얼마나 잘라낼지 정하는 값이다.
-struct PromptSettings {
-    std::size_t maxRecentEvents = 5;
-    std::size_t maxInventoryItems = 8;
-    std::string language = "ko";
-};
-
-// LLM 응답을 게임 규칙 안으로 묶기 위한 밸런스 제한값이다.
-struct ValidationConfig {
-    std::size_t minChoices = 2;
-    std::size_t maxChoices = 4;
-    int maxMonsterHp = 200;
-    int maxMonsterAttack = 30;
-    int maxMonsterDefense = 20;
-    int maxHpDelta = 30;
-    int maxGoldReward = 100;
-    int maxExpReward = 50;
-    int maxItemValue = 100;
 };
 
 inline std::string eventTypeToString(EventType type)

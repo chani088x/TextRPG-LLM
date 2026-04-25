@@ -11,15 +11,16 @@ if(MSVC)
 endif()
 
 add_library(llm_module
-    src/llm/ContextBuilder.cpp
-    src/llm/LLMConfig.cpp
-    src/llm/LLMEventValidator.cpp
-    src/llm/LLMFallbackFactory.cpp
-    src/llm/LLMLogger.cpp
-    src/llm/LLMOutputParser.cpp
-    src/llm/LLMService.cpp
-    src/llm/OllamaClient.cpp
-    src/llm/PromptBuilder.cpp
+    src/llm/LLM.cpp
+)
+
+add_library(combat_module
+    src/combat/CombatSystem.cpp
+)
+
+target_include_directories(combat_module
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
 
 target_include_directories(llm_module
@@ -42,6 +43,7 @@ add_executable(llm_module_tests
 target_link_libraries(llm_module_tests
     PRIVATE
         llm_module
+        combat_module
 )
 
 add_test(NAME llm_module_tests COMMAND llm_module_tests)
@@ -53,4 +55,5 @@ add_executable(llm_text_rpg
 target_link_libraries(llm_text_rpg
     PRIVATE
         llm_module
+        combat_module
 )
