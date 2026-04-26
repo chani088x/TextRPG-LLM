@@ -3,8 +3,12 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdlib>
+#include <ctime>
 #include <iostream>
 #include <limits>
+#include <optional>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -12,11 +16,19 @@ using namespace textrpg::llm;
 
 namespace {
 
+struct PlayerAction {
+    bool isCustom = false;
+    std::string customText;
+    std::string actionContext;
+    std::optional<CombatChoice> combatChoice;
+    std::optional<StoryChoice> storyChoice;
+};
+
 GameState makeInitialState()
 {
     GameState state;
     state.turnNumber = 1;
-    state.currentScene = "안개 낀 숲길 갈림목에 부서진 순찰병의 표식과 오래된 발자국이 남아 있다.";
+    state.currentScene = "낯선 길 위에서 첫 여정이 시작된다.";
     state.player.hp = 999;
     state.player.maxHp = 999;
     state.player.level = 1;
@@ -25,29 +37,44 @@ GameState makeInitialState()
     state.player.gold = 12;
     state.player.exp = 0;
     state.player.inventory = {"낡은 철검", "작은 빵", "횃불"};
-    state.world.location = "안개 숲";
-    state.world.currentObjective = "숲 안에서 사라진 순찰병의 흔적을 찾는다";
-    state.world.decisionHint = "소리를 쫓아 단서를 얻을지, 안전을 확보할지 판단해야 한다";
+    state.world.location = "이름 없는 길";
+    state.world.currentObjective = "현재 장소의 단서를 확인한다";
+    state.world.decisionHint = "정보를 모을지, 빠르게 이동할지 판단해야 한다";
     state.world.fixedRules = {
         "배경은 중세 판타지 세계다.",
         "현대 기술과 총기는 등장하지 않는다.",
         "플레이어를 즉사시키지 않는다.",
         "전투 계산과 보상 확정은 C++ 엔진이 담당한다.",
     };
-    state.memory.recentEvents = {
-        "플레이어는 국경 마을에서 실종된 순찰병 이야기를 들었다.",
-        "대장장이는 숲 안쪽에서 이상한 종소리와 깨진 등불을 보았다고 말했다.",
-    };
-    state.memory.importantChoices = {
-        "플레이어는 보상을 먼저 요구하지 않고 수색을 돕기로 했다.",
-    };
     return state;
 }
 
-void printStatus(const GameState& state)
+void pushLimited(std::vector<std::string>& values, const std::string& value, std::size_t maxCount)
+{
+    if (value.empty()) {
+        return;
+    }
+
+    values.push_back(value);
+    while (values.size() > maxCount) {
+        values.erase(values.begin());
+    }
+}
+
+void applyInitialWorld(GameState& state, const InitialWorld& world)
+{
+    state.world.location = world.location;
+    state.currentScene = world.sceneText;
+    state.world.currentObjective = world.currentObjective;
+    state.world.decisionHint = world.decisionHint;
+    pushLimited(state.memory.recentEvents, "시작 상황: " + world.memoryNote, 5);
+}
+
+void printStatus(const GameState& state, EventRoll sceneType)
 {
     std::cout << "\n============================================================\n";
-    std::cout << "턴 " << state.turnNumber << " | " << state.world.location << '\n';
+    std::cout << "턴 " << state.turnNumber << " | " << state.world.location
+              << " | " << (sceneType == EventRoll::Combat ? "전투" : "비전투") << '\n';
     std::cout << "HP " << state.player.hp << "/" << state.player.maxHp
               << " | LV " << state.player.level
               << " | Gold " << state.player.gold
@@ -64,6 +91,10 @@ void printEvent(const GameEvent& event)
         std::cout << " fallback";
     }
     std::cout << "\n\n" << event.sceneText << "\n";
+
+    if (!event.location.empty()) {
+        std::cout << "\n현재 지역: " << event.location << '\n';
+    }
 
     if (!event.nextObjective.empty()) {
         std::cout << "\n다음 목표: " << event.nextObjective << '\n';
@@ -97,13 +128,6 @@ void printEvent(const GameEvent& event)
               << ", Gold " << event.statChanges.gold
               << ", Exp " << event.statChanges.exp << '\n';
 
-    if (!event.choices.empty()) {
-        std::cout << "\n선택지:\n";
-        for (std::size_t i = 0; i < event.choices.size(); ++i) {
-            std::cout << "  " << (i + 1) << ". " << event.choices[i] << '\n';
-        }
-    }
-
     if (!event.validationNotes.empty()) {
         std::cout << "\n시스템 노트:\n";
         for (const auto& note : event.validationNotes) {
@@ -130,6 +154,22 @@ void printCombatResult(const textrpg::combat::CombatResult& result)
     }
 }
 
+void printChoiceMenu(EventRoll sceneType)
+{
+    std::cout << "\n선택지:\n";
+    if (sceneType == EventRoll::Combat) {
+        std::cout << "  1. 공격\n";
+        std::cout << "  2. 스킬 (준비 중)\n";
+        std::cout << "  3. 아이템 (준비 중)\n";
+        std::cout << "  4. 고유 행동 입력\n";
+    } else {
+        std::cout << "  1. 전진\n";
+        std::cout << "  2. 조사\n";
+        std::cout << "  3. 고유 행동 입력\n";
+    }
+    std::cout << "번호를 고르거나 직접 행동을 입력하세요. (종료: q)\n";
+}
+
 bool isExitCommand(const std::string& input)
 {
     return input == "q" || input == "quit" || input == "exit" || input == "종료";
@@ -141,28 +181,6 @@ bool isUnsignedInteger(const std::string& input)
         && std::all_of(input.begin(), input.end(), [](unsigned char ch) {
                return std::isdigit(ch) != 0;
            });
-}
-
-std::string readPlayerInput(const std::vector<std::string>& previousChoices)
-{
-    std::cout << "\n행동 입력";
-    if (!previousChoices.empty()) {
-        std::cout << " 또는 선택지 번호";
-    }
-    std::cout << " (종료: q): ";
-
-    std::string input;
-    std::getline(std::cin, input);
-
-    if (isUnsignedInteger(input)) {
-        const auto index = static_cast<std::size_t>(std::stoul(input));
-        if (index >= 1 && index <= previousChoices.size()) {
-            return previousChoices[index - 1];
-        }
-        std::cout << "없는 선택지 번호입니다. 자유 입력으로 처리합니다.\n";
-    }
-
-    return input;
 }
 
 std::vector<std::string> splitScriptedInputs(const std::string& script)
@@ -184,43 +202,174 @@ std::vector<std::string> splitScriptedInputs(const std::string& script)
     return inputs;
 }
 
-void pushLimited(std::vector<std::string>& values, const std::string& value, std::size_t maxCount)
+std::string readPlayerInput(EventRoll sceneType)
 {
-    if (value.empty()) {
-        return;
+    printChoiceMenu(sceneType);
+    std::cout << "\n행동 입력: ";
+
+    std::string input;
+    std::getline(std::cin, input);
+    return input;
+}
+
+PlayerAction parsePlayerAction(EventRoll sceneType, std::string input)
+{
+    if (input.empty()) {
+        input = sceneType == EventRoll::Combat ? "1" : "1";
     }
 
-    values.push_back(value);
-    while (values.size() > maxCount) {
-        values.erase(values.begin());
+    PlayerAction action;
+    if (isUnsignedInteger(input)) {
+        const auto index = std::stoul(input);
+        if (sceneType == EventRoll::Combat) {
+            if (index == 1) {
+                action.combatChoice = CombatChoice::Attack;
+                action.actionContext = "플레이어는 기본 전투 선택지 [공격]을 선택했다.";
+                return action;
+            }
+            if (index == 2) {
+                action.combatChoice = CombatChoice::Skill;
+                action.actionContext = "플레이어는 [스킬]을 고르려 했지만 아직 사용할 스킬이 없어 자세를 가다듬었다.";
+                return action;
+            }
+            if (index == 3) {
+                action.combatChoice = CombatChoice::Item;
+                action.actionContext = "플레이어는 [아이템]을 확인했지만 지금 사용할 물건은 정하지 못했다.";
+                return action;
+            }
+            if (index == 4) {
+                action.combatChoice = CombatChoice::Custom;
+                action.isCustom = true;
+                action.customText = "전투 상황을 뒤집을 고유 행동을 시도한다";
+                return action;
+            }
+        } else {
+            if (index == 1) {
+                action.storyChoice = StoryChoice::Advance;
+                action.actionContext = "플레이어는 기본 스토리 선택지 [전진]을 선택했다.";
+                return action;
+            }
+            if (index == 2) {
+                action.storyChoice = StoryChoice::Investigate;
+                action.actionContext = "플레이어는 기본 스토리 선택지 [조사]를 선택했다.";
+                return action;
+            }
+            if (index == 3) {
+                action.isCustom = true;
+                action.customText = "상황을 바꿀 고유 행동을 시도한다";
+                return action;
+            }
+        }
+    }
+
+    action.isCustom = true;
+    action.customText = input;
+    return action;
+}
+
+std::pair<int, DiceOutcome> rollD6()
+{
+    const int value = (std::rand() % 6) + 1;
+    if (value <= 2) {
+        return {value, DiceOutcome::Failure};
+    }
+    if (value <= 4) {
+        return {value, DiceOutcome::Success};
+    }
+    return {value, DiceOutcome::Jackpot};
+}
+
+std::string actionResultSummary(const ActionResult& result)
+{
+    std::ostringstream out;
+    out << result.resultText;
+    out << " (type=" << result.resultType
+        << ", HP " << result.hpDelta
+        << ", Gold " << result.goldDelta
+        << ", Exp " << result.expDelta;
+    if (!result.itemName.empty()) {
+        out << ", Item " << result.itemName;
+    }
+    out << ")";
+    return out.str();
+}
+
+void printActionResult(const ActionResult& result, int diceValue, DiceOutcome outcome)
+{
+    std::cout << "\n고유 행동 d6: " << diceValue << " -> " << diceOutcomeToKorean(outcome) << '\n';
+    std::cout << result.resultText << '\n';
+    std::cout << "행동 결과: HP " << result.hpDelta
+              << ", Gold " << result.goldDelta
+              << ", Exp " << result.expDelta << '\n';
+    if (!result.itemName.empty()) {
+        std::cout << "획득 아이템: " << result.itemName << '\n';
+        if (!result.itemDescription.empty()) {
+            std::cout << result.itemDescription << '\n';
+        }
+    }
+    if (!result.notes.empty()) {
+        std::cout << "시스템 노트:\n";
+        for (const auto& note : result.notes) {
+            std::cout << "  - " << note << '\n';
+        }
     }
 }
 
-void resolveCombat(GameState& state, const GameEvent& event)
+void applyActionResult(GameState& state, const ActionResult& result, DiceOutcome outcome)
 {
-    if (event.eventType != EventType::Combat || !event.monster.has_value()) {
-        return;
+    const int hpDelta = clampInt(result.hpDelta, 1 - state.player.hp, state.player.maxHp - state.player.hp);
+    state.player.hp = clampInt(state.player.hp + hpDelta, 1, state.player.maxHp);
+
+    const int goldDelta = outcome == DiceOutcome::Failure ? 0 : result.goldDelta;
+    const int expDelta = outcome == DiceOutcome::Failure ? 0 : result.expDelta;
+    state.player.gold = std::max(0, state.player.gold + goldDelta);
+    state.player.exp = std::max(0, state.player.exp + expDelta);
+
+    if (outcome != DiceOutcome::Failure && !result.itemName.empty()) {
+        state.player.inventory.push_back(result.itemName);
+    }
+}
+
+std::string resolveAttack(GameState& state, std::optional<Monster>& activeMonster)
+{
+    if (!activeMonster.has_value()) {
+        return "플레이어는 공격 자세를 취했지만 눈앞에 확실한 적은 없었다.";
     }
 
     textrpg::combat::CombatSystem combatSystem;
     auto player = textrpg::combat::makeDefaultPlayer();
     player.hp = state.player.hp;
-    auto monster = textrpg::combat::makeDefaultMonster(event.monster->name);
+    auto monster = textrpg::combat::makeDefaultMonster(activeMonster->name);
 
     const auto result = combatSystem.run(player, monster);
     printCombatResult(result);
 
     state.player.hp = result.player.hp;
-    pushLimited(
-        state.memory.recentEvents,
-        "전투 결과: 플레이어가 때리기만 사용해 " + result.monster.name + "를 쓰러뜨렸다.",
-        5);
+    const auto summary = "플레이어가 기본 선택지 [공격]으로 " + result.monster.name + "를 쓰러뜨렸다.";
+    pushLimited(state.memory.recentEvents, "전투 결과: " + summary, 5);
+    activeMonster.reset();
+    return summary;
 }
 
-void applyEventToState(GameState& state, const GameEvent& event, const std::string& playerInput)
+std::string resolveDefaultAction(GameState& state, std::optional<Monster>& activeMonster, const PlayerAction& action)
+{
+    if (action.combatChoice.has_value()) {
+        if (*action.combatChoice == CombatChoice::Attack) {
+            return resolveAttack(state, activeMonster);
+        }
+        return action.actionContext;
+    }
+
+    return action.actionContext;
+}
+
+void applyEventToState(GameState& state, const GameEvent& event, const std::string& actionContext)
 {
     state.currentScene = event.sceneText;
 
+    if (!event.location.empty()) {
+        state.world.location = event.location;
+    }
     if (!event.nextObjective.empty()) {
         state.world.currentObjective = event.nextObjective;
     }
@@ -229,7 +378,7 @@ void applyEventToState(GameState& state, const GameEvent& event, const std::stri
     }
 
     if (event.eventType != EventType::Combat) {
-        state.player.hp = clampInt(state.player.hp + event.statChanges.hp, 0, state.player.maxHp);
+        state.player.hp = clampInt(state.player.hp + event.statChanges.hp, 1, state.player.maxHp);
     }
     state.player.gold = std::max(0, state.player.gold + event.statChanges.gold);
     state.player.exp = std::max(0, state.player.exp + event.statChanges.exp);
@@ -238,17 +387,8 @@ void applyEventToState(GameState& state, const GameEvent& event, const std::stri
         state.player.inventory.push_back(event.item->name);
     }
 
-    pushLimited(state.memory.importantChoices, "턴 " + std::to_string(state.turnNumber) + " 선택: " + playerInput, 5);
+    pushLimited(state.memory.importantChoices, "턴 " + std::to_string(state.turnNumber) + " 선택: " + actionContext, 5);
     pushLimited(state.memory.recentEvents, "턴 " + std::to_string(state.turnNumber) + " 결과: " + event.memoryNote, 5);
-
-    if (event.eventType == EventType::Combat && event.monster.has_value()) {
-        pushLimited(
-            state.memory.recentEvents,
-            "전투 후속 지침: 다음에 플레이어가 " + event.monster->name
-                + "와 맞서거나 공격하면 새 적을 만들지 말고 전투 결과와 그 직후 발견을 묘사한다.",
-            5);
-    }
-
     ++state.turnNumber;
 }
 
@@ -256,45 +396,81 @@ void applyEventToState(GameState& state, const GameEvent& event, const std::stri
 
 int main(int argc, char** argv)
 {
+    std::srand(static_cast<unsigned int>(std::time(nullptr)));
+
     LLMOptions llmOptions;
-    llmOptions.model = argc >= 2 ? argv[1] : "llama3.2:latest";
+    if (argc >= 2) {
+        llmOptions.model = argv[1];
+    }
     std::vector<std::string> scriptedInputs = argc >= 3 ? splitScriptedInputs(argv[2]) : std::vector<std::string> {};
     std::size_t scriptedIndex = 0;
 
     LLM llm(llmOptions);
 
     GameState state = makeInitialState();
-    std::vector<std::string> lastChoices;
+    const auto initialWorld = llm.generateInitialWorld();
+    applyInitialWorld(state, initialWorld);
+    EventRoll currentSceneType = EventRoll::NonCombat;
+    std::optional<Monster> activeMonster;
 
     std::cout << "LLM Text RPG demo 시작\n";
     std::cout << "model: " << llmOptions.model << "\n";
-    std::cout << "전투는 별도 모듈에서 처리합니다. 현재 스킬은 양쪽 모두 때리기만 있습니다.\n";
+    if (initialWorld.usedFallback) {
+        std::cout << "시작 상황 fallback 사용\n";
+    }
+    std::cout << "다음 장면 유형은 LLM이 고릅니다. 고유 행동은 d6 판정을 사용합니다.\n";
 
     while (state.player.hp > 0) {
-        printStatus(state);
+        printStatus(state, currentSceneType);
 
-        std::string playerInput;
+        std::string input;
         if (scriptedIndex < scriptedInputs.size()) {
-            playerInput = scriptedInputs[scriptedIndex++];
-            std::cout << "\n행동 입력: " << playerInput << '\n';
+            input = scriptedInputs[scriptedIndex++];
+            printChoiceMenu(currentSceneType);
+            std::cout << "\n행동 입력: " << input << '\n';
         } else {
-            playerInput = readPlayerInput(lastChoices);
+            input = readPlayerInput(currentSceneType);
         }
 
-        if (isExitCommand(playerInput)) {
+        if (isExitCommand(input)) {
             std::cout << "게임을 종료합니다.\n";
             return 0;
         }
 
-        if (playerInput.empty()) {
-            playerInput = "주변을 살핀다";
+        auto playerAction = parsePlayerAction(currentSceneType, input);
+        std::string actionContext;
+
+        if (playerAction.isCustom) {
+            const auto [diceValue, outcome] = rollD6();
+            const auto actionResult = llm.generateActionResult(state, playerAction.customText, outcome);
+            printActionResult(actionResult, diceValue, outcome);
+            applyActionResult(state, actionResult, outcome);
+
+            pushLimited(state.memory.importantChoices, "턴 " + std::to_string(state.turnNumber) + " 고유 행동: " + playerAction.customText, 5);
+            pushLimited(state.memory.recentEvents, "고유 행동 결과: " + actionResult.resultText, 5);
+
+            std::ostringstream out;
+            out << "고유 행동: " << playerAction.customText << '\n';
+            out << "d6: " << diceValue << " -> " << diceOutcomeToKorean(outcome) << '\n';
+            out << "결과: " << actionResultSummary(actionResult);
+            actionContext = out.str();
+        } else {
+            actionContext = resolveDefaultAction(state, activeMonster, playerAction);
         }
 
-        const auto event = llm.generateEvent(state, playerInput);
+        const auto event = llm.generateNextEvent(state, actionContext);
+        std::cout << "\n다음 이벤트: LLM 선택 -> " << eventTypeToString(event.eventType) << '\n';
+
         printEvent(event);
-        resolveCombat(state, event);
-        applyEventToState(state, event, playerInput);
-        lastChoices = event.choices;
+        applyEventToState(state, event, actionContext);
+
+        if (event.eventType == EventType::Combat && event.monster.has_value()) {
+            currentSceneType = EventRoll::Combat;
+            activeMonster = event.monster;
+        } else {
+            currentSceneType = EventRoll::NonCombat;
+            activeMonster.reset();
+        }
 
         if (event.eventType == EventType::GameEnd) {
             std::cout << "\n게임 종료 이벤트가 발생했습니다.\n";

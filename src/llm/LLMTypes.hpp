@@ -31,6 +31,39 @@ enum class ItemType {
     Invalid
 };
 
+enum class EventRoll {
+    NonCombat = 0,
+    Combat = 1
+};
+
+enum class ContentType {
+    Combat,
+    Story,
+    Negotiation
+};
+
+enum class DiceOutcome {
+    Failure,
+    Success,
+    Jackpot
+};
+
+enum class CombatChoice {
+    Attack,
+    Skill,
+    Item,
+    Custom
+};
+
+enum class StoryChoice {
+    Advance,
+    Investigate
+};
+
+enum class NegotiationChoice {
+    Custom
+};
+
 // LLM은 몬스터 후보만 만든다. 실제 전투 결과 계산은 전투 시스템의 책임이다.
 struct Monster {
     std::string name;
@@ -55,10 +88,33 @@ struct StatChanges {
     int exp = 0;
 };
 
+struct ActionResult {
+    std::string resultText;
+    std::string resultType;
+    std::string itemName;
+    std::string itemDescription;
+    int hpDelta = 0;
+    int goldDelta = 0;
+    int expDelta = 0;
+    bool usedFallback = false;
+    std::vector<std::string> notes;
+};
+
+struct InitialWorld {
+    std::string location;
+    std::string sceneText;
+    std::string currentObjective;
+    std::string decisionHint;
+    std::string memoryNote;
+    bool usedFallback = false;
+    std::vector<std::string> notes;
+};
+
 // GameEngine에 반환되는 LLM 모듈의 최종 산출물이다.
 // 이 구조체를 만들기 전에는 항상 parse와 validate 단계를 거쳐야 한다.
 struct GameEvent {
     std::string sceneText;
+    std::string location;
     EventType eventType = EventType::Story;
     std::string nextObjective;
     std::string decisionHint;
@@ -178,6 +234,34 @@ inline std::string itemTypeToString(ItemType type)
     }
 
     return "invalid";
+}
+
+inline std::string diceOutcomeToString(DiceOutcome outcome)
+{
+    switch (outcome) {
+    case DiceOutcome::Failure:
+        return "failure";
+    case DiceOutcome::Success:
+        return "success";
+    case DiceOutcome::Jackpot:
+        return "jackpot";
+    }
+
+    return "failure";
+}
+
+inline std::string diceOutcomeToKorean(DiceOutcome outcome)
+{
+    switch (outcome) {
+    case DiceOutcome::Failure:
+        return "실패";
+    case DiceOutcome::Success:
+        return "성공";
+    case DiceOutcome::Jackpot:
+        return "초대박";
+    }
+
+    return "실패";
 }
 
 inline ItemType itemTypeFromString(const std::string& value)
