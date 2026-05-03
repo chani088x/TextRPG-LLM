@@ -3,39 +3,44 @@
 #include <algorithm>
 
 namespace textrpg::combat {
-namespace {
 
-void attack(CombatActor actor, Combatant& attacker, Combatant& target, CombatResult& result)
-{
-    const auto damage = std::max(0, attacker.attack);
-    target.hp = std::max(0, target.hp - damage);
-    result.turns.push_back(CombatTurn {actor, SkillType::Attack, damage, target.hp});
-}
+    void CombatSystem::Action(CombatActor actor, Combatant& attacker, Combatant& target,
+        SkillType type, CombatResult& result) const
+    {
+        int damage = 0;
+        std::string desc;
 
-} // namespace
-
-CombatResult CombatSystem::run(Combatant player, Combatant monster) const
-{
-    CombatResult result;
-
-    player.hp = std::max(0, player.hp);
-    player.attack = std::max(0, player.attack);
-    monster.hp = std::max(0, monster.hp);
-    monster.attack = std::max(0, monster.attack);
-
-    while (player.hp > 0 && monster.hp > 0) {
-        attack(CombatActor::Player, player, monster, result);
-        if (monster.hp <= 0) {
-            break;
+        if (type == SkillType::Attack) 
+        {
+            damage = attacker.getAttack();
+            int actualDamage = target.receiveDamage(damage);
+            desc = attacker.getName() + "이(가) " + std::to_string(actualDamage) + "의 피해를 입혔습니다.";
         }
 
-        attack(CombatActor::Monster, monster, player, result);
+        // 전투 로그
+        result.turns.push_back( CombatTurn{ actor,type,damage,target.getHp(),std::move(desc) } );
     }
 
-    result.winner = player.hp > 0 ? CombatWinner::Player : CombatWinner::Monster;
-    result.player = std::move(player);
-    result.monster = std::move(monster);
-    return result;
-}
+    CombatResult CombatSystem::run(Combatant player, Combatant monster) const
+    {
+        CombatResult result;
+
+        while (!player.isDead() && !monster.isDead()) 
+        {
+            // 플레이어 턴
+            Action(CombatActor::Player, player, monster, SkillType::Attack, result);
+            if (monster.isDead()) { break; }
+
+            // 몬스터 턴
+            Action(CombatActor::Monster, monster, player, SkillType::Attack, result);
+        }
+        
+        //동시 사망시 플레이어 패배
+        result.winner = (!player.isDead()) ? CombatWinner::Player : CombatWinner::Monster;
+
+        result.player = std::move(player);
+        result.monster = std::move(monster);
+        return result;
+    }
 
 } // namespace textrpg::combat

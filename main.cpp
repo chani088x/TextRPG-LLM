@@ -116,8 +116,8 @@ void printCombatResult(const textrpg::combat::CombatResult& result)
 {
     std::cout << "\n전투 결과:\n";
     for (const auto& turn : result.turns) {
-        const auto actor = turn.actor == textrpg::combat::CombatActor::Player ? "플레이어" : result.monster.name;
-        const auto target = turn.actor == textrpg::combat::CombatActor::Player ? result.monster.name : "플레이어";
+        const auto actor = turn.actor == textrpg::combat::CombatActor::Player ? "플레이어" : result.monster.getName();
+        const auto target = turn.actor == textrpg::combat::CombatActor::Player ? result.monster.getName() : "플레이어";
         std::cout << "  " << actor << "의 때리기 -> " << target
                   << "에게 " << turn.damage << " 피해"
                   << " (남은 HP " << turn.targetHpAfter << ")\n";
@@ -204,16 +204,16 @@ void resolveCombat(GameState& state, const GameEvent& event)
 
     textrpg::combat::CombatSystem combatSystem;
     auto player = textrpg::combat::makeDefaultPlayer();
-    player.hp = state.player.hp;
+    player.setHp(state.player.hp);
     auto monster = textrpg::combat::makeDefaultMonster(event.monster->name);
 
     const auto result = combatSystem.run(player, monster);
     printCombatResult(result);
 
-    state.player.hp = result.player.hp;
+    state.player.hp = result.player.getHp();
     pushLimited(
         state.memory.recentEvents,
-        "전투 결과: 플레이어가 때리기만 사용해 " + result.monster.name + "를 쓰러뜨렸다.",
+        "전투 결과: 플레이어가 때리기만 사용해 " + result.monster.getName() + "를 쓰러뜨렸다.",
         5);
 }
 

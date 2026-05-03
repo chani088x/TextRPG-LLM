@@ -12,11 +12,11 @@ endif()
 
 add_library(llm_module
     src/llm/LLM.cpp
-)
+  "src/combat/CombatAction.hpp")
 
 add_library(combat_module
     src/combat/CombatSystem.cpp
-)
+  "src/combat/CombatAction.hpp")
 
 target_include_directories(combat_module
     PUBLIC
@@ -36,7 +36,7 @@ endif()
 
 add_executable(llm_text_rpg
     main.cpp
-)
+  "src/combat/CombatAction.hpp")
 
 target_link_libraries(llm_text_rpg
     PRIVATE
