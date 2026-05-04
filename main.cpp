@@ -1,3 +1,6 @@
+#include "game/Inventory.hpp"
+#include "game/Item.hpp"
+#include "game/QuestItem.hpp"
 #include "llm/LLMConfig.hpp"
 #include "llm/LLMService.hpp"
 #include "llm/OllamaClient.hpp"
@@ -12,6 +15,8 @@
 #include <vector>
 
 using namespace textrpg::llm;
+using textrpg::game::Inventory;
+using textrpg::game::QuestItem;
 
 namespace {
 
@@ -181,7 +186,8 @@ void pushLimited(std::vector<std::string>& values, const std::string& value, std
     }
 }
 
-void applyEventToState(GameState& state, const GameEvent& event, const std::string& playerInput)
+void applyEventToState(GameState& state, const GameEvent& event, const std::string& playerInput,
+                       Inventory& inventory)
 {
     state.currentScene = event.sceneText;
 
@@ -197,7 +203,8 @@ void applyEventToState(GameState& state, const GameEvent& event, const std::stri
     state.player.exp = std::max(0, state.player.exp + event.statChanges.exp);
 
     if (event.item.has_value()) {
-        state.player.inventory.push_back(event.item->name);
+        inventory.addItem(textrpg::game::Item::fromLLMItem(event.item.value()));
+        state.player.inventory = inventory.getItemNames();
     }
 
     pushLimited(state.memory.importantChoices, "턴 " + std::to_string(state.turnNumber) + " 선택: " + playerInput, 5);
@@ -233,6 +240,11 @@ int main(int argc, char** argv)
     GameState state = makeInitialState();
     std::vector<std::string> lastChoices;
 
+    Inventory inventory;
+    for (const auto& name : state.player.inventory) {
+        inventory.addItem(std::make_unique<QuestItem>(name, "", 0));
+    }
+
     std::cout << "LLM Text RPG demo 시작\n";
     std::cout << "model: " << model << "\n";
     std::cout << "전투 계산, 인벤토리 상세 처리, 세이브/로드는 아직 데모 범위 밖입니다.\n";
@@ -259,7 +271,7 @@ int main(int argc, char** argv)
 
         const auto event = service.generateEvent(state, playerInput);
         printEvent(event);
-        applyEventToState(state, event, playerInput);
+        applyEventToState(state, event, playerInput, inventory);
         lastChoices = event.choices;
 
         if (event.eventType == EventType::GameEnd) {
