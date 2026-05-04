@@ -24,6 +24,97 @@ struct PlayerAction {
     std::optional<StoryChoice> storyChoice;
 };
 
+std::string readEnv(const char* name)
+{
+    if (const char* value = std::getenv(name)) {
+        return value;
+    }
+    return {};
+}
+
+std::string toLower(std::string value)
+{
+    std::transform(value.begin(), value.end(), value.begin(), [](unsigned char ch) {
+        return static_cast<char>(std::tolower(ch));
+    });
+    return value;
+}
+
+bool tryParseProvider(const std::string& value, LLMProvider& provider)
+{
+    const auto normalized = toLower(value);
+    if (normalized == "openai") {
+        provider = LLMProvider::OpenAI;
+        return true;
+    }
+    if (normalized == "ollama") {
+        provider = LLMProvider::Ollama;
+        return true;
+    }
+    return false;
+}
+
+std::string providerName(LLMProvider provider)
+{
+    return provider == LLMProvider::Ollama ? "ollama" : "openai";
+}
+
+std::string defaultModel(LLMProvider provider)
+{
+    if (provider == LLMProvider::Ollama) {
+        return "0xIbra/supergemma4-26b-uncensored-gguf-v2:Q4_K_M";
+    }
+    return "gpt-4.1-mini";
+}
+
+std::string defaultEndpoint(LLMProvider provider)
+{
+    return provider == LLMProvider::Ollama ? "http://localhost:11434" : "https://api.openai.com/v1/";
+}
+
+LLMOptions makeLlmOptions(int argc, char** argv, int& scriptArgIndex)
+{
+    LLMOptions options;
+
+    LLMProvider envProvider;
+    if (tryParseProvider(readEnv("TEXTRPG_LLM_PROVIDER"), envProvider)) {
+        options.provider = envProvider;
+    }
+
+    if (options.provider == LLMProvider::OpenAI) {
+        options.apiKey = readEnv("OPENAI_API_KEY");
+        options.organization = readEnv("OPENAI_ORG");
+        options.endpoint = readEnv("OPENAI_API_BASE");
+        options.model = readEnv("OPENAI_MODEL");
+    } else {
+        options.endpoint = readEnv("OLLAMA_ENDPOINT");
+        options.model = readEnv("OLLAMA_MODEL");
+    }
+
+    scriptArgIndex = 2;
+    if (argc >= 2) {
+        LLMProvider cliProvider;
+        if (tryParseProvider(argv[1], cliProvider)) {
+            options.provider = cliProvider;
+            scriptArgIndex = 3;
+            if (argc >= 3) {
+                options.model = argv[2];
+            }
+        } else {
+            options.model = argv[1];
+        }
+    }
+
+    if (options.endpoint.empty()) {
+        options.endpoint = defaultEndpoint(options.provider);
+    }
+    if (options.model.empty()) {
+        options.model = defaultModel(options.provider);
+    }
+
+    return options;
+}
+
 GameState makeInitialState()
 {
     GameState state;
@@ -59,15 +150,6 @@ void pushLimited(std::vector<std::string>& values, const std::string& value, std
     while (values.size() > maxCount) {
         values.erase(values.begin());
     }
-}
-
-void applyInitialWorld(GameState& state, const InitialWorld& world)
-{
-    state.world.location = world.location;
-    state.currentScene = world.sceneText;
-    state.world.currentObjective = world.currentObjective;
-    state.world.decisionHint = world.decisionHint;
-    pushLimited(state.memory.recentEvents, "시작 상황: " + world.memoryNote, 5);
 }
 
 void printStatus(const GameState& state, EventRoll sceneType)
@@ -267,16 +349,16 @@ PlayerAction parsePlayerAction(EventRoll sceneType, std::string input)
     return action;
 }
 
-std::pair<int, DiceOutcome> rollD6()
+std::pair<int, std::string> rollD6()
 {
     const int value = (std::rand() % 6) + 1;
     if (value <= 2) {
-        return {value, DiceOutcome::Failure};
+        return {value, ids::dice::Failure};
     }
     if (value <= 4) {
-        return {value, DiceOutcome::Success};
+        return {value, ids::dice::Success};
     }
-    return {value, DiceOutcome::Jackpot};
+    return {value, ids::dice::Jackpot};
 }
 
 std::string actionResultSummary(const ActionResult& result)
@@ -294,7 +376,7 @@ std::string actionResultSummary(const ActionResult& result)
     return out.str();
 }
 
-void printActionResult(const ActionResult& result, int diceValue, DiceOutcome outcome)
+void printActionResult(const ActionResult& result, int diceValue, const std::string& outcome)
 {
     std::cout << "\n고유 행동 d6: " << diceValue << " -> " << diceOutcomeToKorean(outcome) << '\n';
     std::cout << result.resultText << '\n';
@@ -312,21 +394,6 @@ void printActionResult(const ActionResult& result, int diceValue, DiceOutcome ou
         for (const auto& note : result.notes) {
             std::cout << "  - " << note << '\n';
         }
-    }
-}
-
-void applyActionResult(GameState& state, const ActionResult& result, DiceOutcome outcome)
-{
-    const int hpDelta = clampInt(result.hpDelta, 1 - state.player.hp, state.player.maxHp - state.player.hp);
-    state.player.hp = clampInt(state.player.hp + hpDelta, 1, state.player.maxHp);
-
-    const int goldDelta = outcome == DiceOutcome::Failure ? 0 : result.goldDelta;
-    const int expDelta = outcome == DiceOutcome::Failure ? 0 : result.expDelta;
-    state.player.gold = std::max(0, state.player.gold + goldDelta);
-    state.player.exp = std::max(0, state.player.exp + expDelta);
-
-    if (outcome != DiceOutcome::Failure && !result.itemName.empty()) {
-        state.player.inventory.push_back(result.itemName);
     }
 }
 
@@ -363,57 +430,28 @@ std::string resolveDefaultAction(GameState& state, std::optional<Monster>& activ
     return action.actionContext;
 }
 
-void applyEventToState(GameState& state, const GameEvent& event, const std::string& actionContext)
-{
-    state.currentScene = event.sceneText;
-
-    if (!event.location.empty()) {
-        state.world.location = event.location;
-    }
-    if (!event.nextObjective.empty()) {
-        state.world.currentObjective = event.nextObjective;
-    }
-    if (!event.decisionHint.empty()) {
-        state.world.decisionHint = event.decisionHint;
-    }
-
-    if (event.eventType != EventType::Combat) {
-        state.player.hp = clampInt(state.player.hp + event.statChanges.hp, 1, state.player.maxHp);
-    }
-    state.player.gold = std::max(0, state.player.gold + event.statChanges.gold);
-    state.player.exp = std::max(0, state.player.exp + event.statChanges.exp);
-
-    if (event.item.has_value()) {
-        state.player.inventory.push_back(event.item->name);
-    }
-
-    pushLimited(state.memory.importantChoices, "턴 " + std::to_string(state.turnNumber) + " 선택: " + actionContext, 5);
-    pushLimited(state.memory.recentEvents, "턴 " + std::to_string(state.turnNumber) + " 결과: " + event.memoryNote, 5);
-    ++state.turnNumber;
-}
-
 } // namespace
 
 int main(int argc, char** argv)
 {
     std::srand(static_cast<unsigned int>(std::time(nullptr)));
 
-    LLMOptions llmOptions;
-    if (argc >= 2) {
-        llmOptions.model = argv[1];
-    }
-    std::vector<std::string> scriptedInputs = argc >= 3 ? splitScriptedInputs(argv[2]) : std::vector<std::string> {};
+    int scriptArgIndex = 2;
+    LLMOptions llmOptions = makeLlmOptions(argc, argv, scriptArgIndex);
+    std::vector<std::string> scriptedInputs = argc > scriptArgIndex
+        ? splitScriptedInputs(argv[scriptArgIndex])
+        : std::vector<std::string> {};
     std::size_t scriptedIndex = 0;
 
     LLM llm(llmOptions);
 
     GameState state = makeInitialState();
-    const auto initialWorld = llm.generateInitialWorld();
-    applyInitialWorld(state, initialWorld);
+    const auto initialWorld = llm.generateInitialWorld(state);
     EventRoll currentSceneType = EventRoll::NonCombat;
     std::optional<Monster> activeMonster;
 
     std::cout << "LLM Text RPG demo 시작\n";
+    std::cout << "provider: " << providerName(llmOptions.provider) << "\n";
     std::cout << "model: " << llmOptions.model << "\n";
     if (initialWorld.usedFallback) {
         std::cout << "시작 상황 fallback 사용\n";
@@ -444,10 +482,6 @@ int main(int argc, char** argv)
             const auto [diceValue, outcome] = rollD6();
             const auto actionResult = llm.generateActionResult(state, playerAction.customText, outcome);
             printActionResult(actionResult, diceValue, outcome);
-            applyActionResult(state, actionResult, outcome);
-
-            pushLimited(state.memory.importantChoices, "턴 " + std::to_string(state.turnNumber) + " 고유 행동: " + playerAction.customText, 5);
-            pushLimited(state.memory.recentEvents, "고유 행동 결과: " + actionResult.resultText, 5);
 
             std::ostringstream out;
             out << "고유 행동: " << playerAction.customText << '\n';
@@ -462,9 +496,8 @@ int main(int argc, char** argv)
         std::cout << "\n다음 이벤트: LLM 선택 -> " << eventTypeToString(event.eventType) << '\n';
 
         printEvent(event);
-        applyEventToState(state, event, actionContext);
 
-        if (event.eventType == EventType::Combat && event.monster.has_value()) {
+        if (event.eventType == ids::event::Combat && event.monster.has_value()) {
             currentSceneType = EventRoll::Combat;
             activeMonster = event.monster;
         } else {
@@ -472,12 +505,12 @@ int main(int argc, char** argv)
             activeMonster.reset();
         }
 
-        if (event.eventType == EventType::GameEnd) {
+        if (event.eventType == ids::event::GameEnd) {
             std::cout << "\n게임 종료 이벤트가 발생했습니다.\n";
             return 0;
         }
 
-        if (argc >= 3 && scriptedIndex >= scriptedInputs.size()) {
+        if (argc > scriptArgIndex && scriptedIndex >= scriptedInputs.size()) {
             std::cout << "\n스크립트 입력 실행을 마쳤습니다.\n";
             return event.usedFallback ? 2 : 0;
         }

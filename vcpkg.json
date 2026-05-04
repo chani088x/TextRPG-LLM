@@ -1,0 +1,7 @@
+{
+  "name": "llm-text-rpg",
+  "version-string": "0.1.0",
+  "dependencies": [
+    "curl"
+  ]
+}
