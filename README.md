@@ -68,11 +68,21 @@ ctest --test-dir build-vcpkg -C Debug --output-on-failure
 
 ## 실행
 
-OpenAI API 키를 환경 변수로 설정합니다.
+OpenAI API 키는 코드나 git에 올리지 말고 환경 변수로 설정합니다.
+
+현재 PowerShell 창에서만 사용할 때:
 
 ```powershell
 $env:OPENAI_API_KEY="sk-..."
 ```
+
+Windows 사용자 환경 변수로 저장할 때:
+
+```powershell
+setx OPENAI_API_KEY "sk-..."
+```
+
+`setx`로 저장한 뒤에는 새 터미널을 열어야 적용됩니다.
 
 ```powershell
 .\build-vcpkg\Debug\llm_text_rpg.exe
