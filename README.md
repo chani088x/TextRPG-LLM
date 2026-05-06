@@ -1,89 +1,107 @@
-# LLM Text RPG v2
+# LLM Text RPG
 
-중세 판타지 텍스트 RPG용 LLM 하위 모듈입니다. 현재 범위는 게임 엔진 전체가 아니라, 플레이어 입력과 현재 상태를 받아 LLM 프롬프트를 만들고 검증된 `GameEvent`를 반환하는 부분입니다.
+중세 판타지 텍스트 RPG 프로토타입입니다. LLM은 장면과 이벤트 후보만 만들고, 전투 수치는 C++ 코드가 처리합니다.
 
-## 구성
+## 구조
 
-- `src/llm/ILLMClient.hpp`: LLM 호출 인터페이스
-- `src/llm/OllamaClient.*`: `ollama.hpp` 기반 Ollama chat 호출 클라이언트
-- `src/llm/ContextBuilder.*`: `GameState`를 LLM context 문자열로 요약
-- `src/llm/PromptBuilder.*`: 중세 판타지 GM 프롬프트 생성
-- `src/llm/LLMOutputParser.*`: raw response에서 JSON 추출 및 `GameEvent` 변환
-- `src/llm/LLMEventValidator.*`: 이벤트 타입, 선택지, 몬스터/아이템/보상 범위 검증 및 repair
-- `src/llm/LLMFallbackFactory.*`: 실패 시 안전한 story 이벤트 생성
-- `src/llm/LLMService.*`: GameEngine이 호출할 통합 진입점
-- `tests/test_llm_module.cpp`: Parser, Validator, Fallback, Service 테스트
+- `main.cpp`: 데모 게임 루프
+- `src/llm/LLM.*`: public LLM 엔진 facade. 호출자는 결과 객체만 받고 raw JSON은 다루지 않음
+- `src/llm/OpenAIChatClient.*`: OpenAI Chat Completions API 어댑터
+- `src/llm/OllamaChatClient.*`: Ollama SDK 어댑터. `IChatClient` 구현으로 백엔드 교체 가능
+- `src/llm/PromptBuilder.*`: `GameState`와 행동 컨텍스트를 LLM 프롬프트로 변환
+- `src/llm/ResponseParser.*`: JSON 추출, 객체 매핑, 검증/fallback
+- `src/llm/StateApplier.*`: 파싱된 객체를 `GameState`에 반영
+- `src/llm/LLMEngineInternals.hpp`: 테스트와 내부 모듈 연결용 얇은 선언
+- `src/llm/LLMTypes.hpp`: 게임 상태와 LLM 이벤트 타입
+- `src/combat/CombatSystem.*`: 단순 전투 처리
+- `src/combat/CombatTypes.hpp`: 전투 타입
 
-## 기본 사용
+## 현재 규칙
 
-```cpp
-#include "llm/LLMService.hpp"
-#include "llm/OllamaClient.hpp"
+- LLM 백엔드 기본값: OpenAI
+- 기본 OpenAI 모델: `gpt-4.1-mini`
+- Ollama도 `TEXTRPG_LLM_PROVIDER=ollama` 또는 실행 인자 `ollama`로 계속 사용 가능
+- 시작 위치, 첫 장면, 첫 목표, 첫 판단 기준은 LLM이 생성
+- 매 턴 다음 이벤트 유형은 LLM이 현재 목표, 판단 기준, 최근 사건, 직전 행동을 보고 선택
+  - 가능한 이벤트: `story`, `combat`, `item_gain`, `stat_change`, `dialogue`, `quest_update`, `rest`, `game_end`
+  - LLM 엔진은 LLM 응답을 파싱/검증하고 `GameState`에 위치, 목표, 상태 변화, 아이템, 메모리를 반영
+  - 전투 HP 계산은 `CombatSystem`이 담당하므로 `combat` 이벤트의 LLM HP 변화는 적용하지 않음
+- 플레이어: HP 999, 공격력 9
+- 몬스터: HP 10, 공격력 1
+- 전투 기본 선택지: 공격, 스킬, 아이템, 고유 행동
+- 비전투 기본 선택지: 전진, 조사, 고유 행동
+- 고유 행동은 d6으로 판정
+  - 1~2: 실패
+  - 3~4: 성공
+  - 5~6: 초대박
+- 전투 계산은 현재 `때리기`만 사용
+- LLM이 준 몬스터 수치는 무시하고 이름/설명만 사용
 
-using namespace textrpg::llm;
+## LLM 타입 확장
 
-auto client = std::make_shared<OllamaClient>();
-LLMService llmService(client);
+LLM JSON과 맞물리는 타입은 enum 대신 문자열 ID를 사용합니다. 새 ID를 추가할 때는 `src/llm/LLMTypes.hpp`의 `ids` 목록과 프롬프트/repair 정책, 테스트를 함께 갱신하세요.
 
-GameState state;
-state.turnNumber = 1;
-state.world.location = "안개 숲 입구";
+- 이벤트 ID: `story`, `combat`, `item_gain`, `stat_change`, `dialogue`, `quest_update`, `rest`, `game_end`
+- 아이템 ID: `weapon`, `armor`, `consumable`, `quest_item`
+- d6 결과 ID: `failure`, `success`, `jackpot`
 
-GameEvent event = llmService.generateEvent(state, "숲 안쪽으로 조심스럽게 들어간다");
-```
+새 이벤트 타입을 추가할 때:
 
-## 실행 테스트
-
-빌드 후 `llm_text_rpg`로 실제 Ollama 호출을 확인할 수 있습니다.
-
-대화형 게임 루프:
-
-```powershell
-.\build\Debug\llm_text_rpg.exe
-```
-
-모델을 임시로 바꿔 실행:
-
-```powershell
-.\build\Debug\llm_text_rpg.exe llama3.2:latest
-```
-
-한 턴만 실행하고 종료하는 스크립트 입력:
-
-```powershell
-.\build\Debug\llm_text_rpg.exe llama3.2:latest "검을 뽑고 수풀 속에서 다가오는 적과 맞선다"
-```
-
-여러 턴을 자동 실행하려면 `|`로 행동을 구분합니다.
-
-```powershell
-.\build\Debug\llm_text_rpg.exe llama3.2:latest "늑대와 맞서 싸운다|쓰러진 늑대 주변의 흔적을 살핀다"
-```
-
-첫 번째 인자를 생략하면 `config/llm.toml`의 `[llm].model` 값을 사용합니다.
-큰 로컬 모델은 첫 응답이 오래 걸릴 수 있으니 `config/llm.toml`의 `read_timeout_seconds` 값을 넉넉하게 둡니다.
-생각 모드가 있는 Ollama 모델은 `think = false`로 `/set nothink`와 같은 요청을 보냅니다.
-설정 로더는 같은 의미로 `nothink = true`도 지원합니다.
-
-전투 이벤트가 생성되면 `event_type: combat`과 함께 `monster` 객체가 출력됩니다.
-전투 이벤트는 선택지를 요구하지 않습니다. LLM은 몬스터와 전투 진입 상황만 만들고, 전투 행동은 별도 전투 시스템이 처리합니다.
-각 LLM 이벤트는 `next_objective`와 `decision_hint`도 함께 반환합니다. 메인 루프는 이 값을 다음 턴의 목표와 판단 기준으로 반영하므로, 전투나 발견 이후에도 다음 장면이 이전 결과를 이어받습니다.
-
-현재 `main.cpp`의 게임 루프는 데모용입니다. 플레이어 입력을 반복해서 받고, `GameEvent`를 출력하고, HP/Gold/Exp/최근 사건/인벤토리 후보 정도만 최소 반영합니다. 전투 계산, 선택지별 규칙 처리, 세이브/로드는 아직 별도 엔진 범위입니다.
+1. `ids::event`와 `eventTypeIds()`에 ID를 추가합니다.
+2. `PromptBuilder`의 다음 장면 프롬프트 선택 규칙을 추가합니다.
+3. 상태 반영이 필요하면 `StateApplier`의 event apply 정책을 갱신합니다.
+4. 파싱/보정 테스트를 추가합니다.
 
 ## 빌드
 
+OpenAI 백엔드는 `third_party/openai.hpp`를 통해 libcurl을 링크합니다. Windows에서는 vcpkg toolchain을 지정해 빌드하세요.
+
 ```powershell
-cmake -S . -B build
-cmake --build build
-ctest --test-dir build --output-on-failure
+vcpkg install --triplet x64-windows
 ```
 
-외부 C++ 헤더는 모두 `third_party/`에 포함되어 있습니다.
+```powershell
+cmake -S . -B build-vcpkg -DCMAKE_TOOLCHAIN_FILE=C:\vcpkg\scripts\buildsystems\vcpkg.cmake -DVCPKG_TARGET_TRIPLET=x64-windows
+cmake --build build-vcpkg
+ctest --test-dir build-vcpkg -C Debug --output-on-failure
+```
 
-- `third_party/ollama/ollama.hpp`
-- `third_party/nlohmann/json.hpp`
-- `third_party/spdlog/`
-- `third_party/doctest/doctest.h`
+## 실행
 
-CMake 빌드 중에 외부 라이브러리를 다운로드하지 않습니다. 헤더를 갱신하려면 해당 `third_party` 파일 또는 폴더를 새 버전으로 교체하면 됩니다.
+OpenAI API 키는 코드나 git에 올리지 말고 환경 변수로 설정합니다.
+
+현재 PowerShell 창에서만 사용할 때:
+
+```powershell
+$env:OPENAI_API_KEY="sk-..."
+```
+
+Windows 사용자 환경 변수로 저장할 때:
+
+```powershell
+setx OPENAI_API_KEY "sk-..."
+```
+
+`setx`로 저장한 뒤에는 새 터미널을 열어야 적용됩니다.
+
+```powershell
+.\build-vcpkg\Debug\llm_text_rpg.exe
+```
+
+모델 지정:
+
+```powershell
+.\build-vcpkg\Debug\llm_text_rpg.exe gpt-4.1-mini
+```
+
+한 턴 스크립트 실행:
+
+```powershell
+.\build-vcpkg\Debug\llm_text_rpg.exe gpt-4.1-mini "숲길의 부서진 표식을 조사한다"
+```
+
+Ollama 실행:
+
+```powershell
+.\build-vcpkg\Debug\llm_text_rpg.exe ollama llama3.2:latest
+```

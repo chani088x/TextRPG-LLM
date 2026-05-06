@@ -8,27 +8,50 @@
 
 namespace textrpg::llm {
 
-// LLM JSON의 event_type 문자열과 1:1로 맞춰지는 이벤트 종류다.
-// Invalid는 파싱/검증 실패를 안전하게 표현하기 위한 내부 값이다.
-enum class EventType {
-    Story,
-    Combat,
-    ItemGain,
-    StatChange,
-    Dialogue,
-    QuestUpdate,
-    Rest,
-    GameEnd,
-    Invalid
+namespace ids {
+
+// 팀원이 LLM JSON 타입을 확장할 때는 이 ID 목록과 README의 확장 가이드를 같이 갱신한다.
+namespace event {
+inline constexpr const char* Story = "story";
+inline constexpr const char* Combat = "combat";
+inline constexpr const char* ItemGain = "item_gain";
+inline constexpr const char* StatChange = "stat_change";
+inline constexpr const char* Dialogue = "dialogue";
+inline constexpr const char* QuestUpdate = "quest_update";
+inline constexpr const char* Rest = "rest";
+inline constexpr const char* GameEnd = "game_end";
+} // namespace event
+
+namespace item {
+inline constexpr const char* Weapon = "weapon";
+inline constexpr const char* Armor = "armor";
+inline constexpr const char* Consumable = "consumable";
+inline constexpr const char* QuestItem = "quest_item";
+} // namespace item
+
+namespace dice {
+inline constexpr const char* Failure = "failure";
+inline constexpr const char* Success = "success";
+inline constexpr const char* Jackpot = "jackpot";
+} // namespace dice
+
+} // namespace ids
+
+enum class EventRoll {
+    NonCombat = 0,
+    Combat = 1
 };
 
-// LLM JSON의 item.type 문자열과 맞춰지는 아이템 종류다.
-enum class ItemType {
-    Weapon,
-    Armor,
-    Consumable,
-    QuestItem,
-    Invalid
+enum class CombatChoice {
+    Attack,
+    Skill,
+    Item,
+    Custom
+};
+
+enum class StoryChoice {
+    Advance,
+    Investigate
 };
 
 // LLM은 몬스터 후보만 만든다. 실제 전투 결과 계산은 전투 시스템의 책임이다.
@@ -43,23 +66,46 @@ struct Monster {
 // item_gain 이벤트에서 엔진이 인벤토리에 넘길 수 있는 최소 아이템 정보다.
 struct Item {
     std::string name;
-    ItemType type = ItemType::Consumable;
+    std::string type = ids::item::Consumable;
     std::string description;
     int value = 0;
 };
 
-// LLM이 제안할 수 있는 상태 변화다. 최종 적용 전 Validator에서 범위를 제한한다.
+// LLM이 제안할 수 있는 상태 변화다. 파싱 단계에서 안전 범위로 제한한다.
 struct StatChanges {
     int hp = 0;
     int gold = 0;
     int exp = 0;
 };
 
+struct ActionResult {
+    std::string resultText;
+    std::string resultType;
+    std::string itemName;
+    std::string itemDescription;
+    int hpDelta = 0;
+    int goldDelta = 0;
+    int expDelta = 0;
+    bool usedFallback = false;
+    std::vector<std::string> notes;
+};
+
+struct InitialWorld {
+    std::string location;
+    std::string sceneText;
+    std::string currentObjective;
+    std::string decisionHint;
+    std::string memoryNote;
+    bool usedFallback = false;
+    std::vector<std::string> notes;
+};
+
 // GameEngine에 반환되는 LLM 모듈의 최종 산출물이다.
 // 이 구조체를 만들기 전에는 항상 parse와 validate 단계를 거쳐야 한다.
 struct GameEvent {
     std::string sceneText;
-    EventType eventType = EventType::Story;
+    std::string location;
+    std::string eventType = ids::event::Story;
     std::string nextObjective;
     std::string decisionHint;
     std::vector<std::string> choices;
@@ -98,7 +144,7 @@ struct StoryMemory {
     std::vector<std::string> importantChoices;
 };
 
-// LLM 모듈 입력용 상태 스냅샷이다. 이 모듈이 GameState를 직접 수정하지는 않는다.
+// LLM 엔진이 생성과 상태 반영에 사용하는 최소 게임 상태다.
 struct GameState {
     int turnNumber = 0;
     std::string currentScene;
@@ -107,114 +153,122 @@ struct GameState {
     StoryMemory memory;
 };
 
-// ContextBuilder가 긴 상태를 얼마나 잘라낼지 정하는 값이다.
-struct PromptSettings {
-    std::size_t maxRecentEvents = 5;
-    std::size_t maxInventoryItems = 8;
-    std::string language = "ko";
-};
-
-// LLM 응답을 게임 규칙 안으로 묶기 위한 밸런스 제한값이다.
-struct ValidationConfig {
-    std::size_t minChoices = 2;
-    std::size_t maxChoices = 4;
-    int maxMonsterHp = 200;
-    int maxMonsterAttack = 30;
-    int maxMonsterDefense = 20;
-    int maxHpDelta = 30;
-    int maxGoldReward = 100;
-    int maxExpReward = 50;
-    int maxItemValue = 100;
-};
-
-inline std::string eventTypeToString(EventType type)
+inline bool isKnownEventType(const std::string& value)
 {
-    switch (type) {
-    case EventType::Story:
-        return "story";
-    case EventType::Combat:
-        return "combat";
-    case EventType::ItemGain:
-        return "item_gain";
-    case EventType::StatChange:
-        return "stat_change";
-    case EventType::Dialogue:
-        return "dialogue";
-    case EventType::QuestUpdate:
-        return "quest_update";
-    case EventType::Rest:
-        return "rest";
-    case EventType::GameEnd:
-        return "game_end";
-    case EventType::Invalid:
-        return "invalid";
-    }
-
-    return "invalid";
+    return value == ids::event::Story
+        || value == ids::event::Combat
+        || value == ids::event::ItemGain
+        || value == ids::event::StatChange
+        || value == ids::event::Dialogue
+        || value == ids::event::QuestUpdate
+        || value == ids::event::Rest
+        || value == ids::event::GameEnd;
 }
 
-inline EventType eventTypeFromString(const std::string& value)
+inline std::string normalizeEventType(const std::string& value, const std::string& fallback = ids::event::Story)
 {
-    if (value == "story") {
-        return EventType::Story;
-    }
-    if (value == "combat") {
-        return EventType::Combat;
-    }
-    if (value == "item_gain") {
-        return EventType::ItemGain;
-    }
-    if (value == "stat_change") {
-        return EventType::StatChange;
-    }
-    if (value == "dialogue") {
-        return EventType::Dialogue;
-    }
-    if (value == "quest_update") {
-        return EventType::QuestUpdate;
-    }
-    if (value == "rest") {
-        return EventType::Rest;
-    }
-    if (value == "game_end") {
-        return EventType::GameEnd;
-    }
-    return EventType::Invalid;
+    return isKnownEventType(value) ? value : fallback;
 }
 
-inline std::string itemTypeToString(ItemType type)
+inline std::string eventTypeToString(const std::string& type)
 {
-    switch (type) {
-    case ItemType::Weapon:
-        return "weapon";
-    case ItemType::Armor:
-        return "armor";
-    case ItemType::Consumable:
-        return "consumable";
-    case ItemType::QuestItem:
-        return "quest_item";
-    case ItemType::Invalid:
-        return "invalid";
-    }
-
-    return "invalid";
+    return type;
 }
 
-inline ItemType itemTypeFromString(const std::string& value)
+inline bool isKnownItemType(const std::string& value)
 {
-    if (value == "weapon") {
-        return ItemType::Weapon;
+    return value == ids::item::Weapon
+        || value == ids::item::Armor
+        || value == ids::item::Consumable
+        || value == ids::item::QuestItem;
+}
+
+inline std::string normalizeItemType(const std::string& value)
+{
+    return isKnownItemType(value) ? value : ids::item::Consumable;
+}
+
+inline std::string itemTypeToString(const std::string& type)
+{
+    return type;
+}
+
+inline bool isKnownDiceOutcome(const std::string& value)
+{
+    return value == ids::dice::Failure
+        || value == ids::dice::Success
+        || value == ids::dice::Jackpot;
+}
+
+inline std::string normalizeDiceOutcome(const std::string& value)
+{
+    return isKnownDiceOutcome(value) ? value : ids::dice::Failure;
+}
+
+inline std::string diceOutcomeToString(const std::string& outcome)
+{
+    return outcome;
+}
+
+inline std::string diceOutcomeToKorean(const std::string& outcome)
+{
+    if (outcome == ids::dice::Success) {
+        return "성공";
     }
-    if (value == "armor") {
-        return ItemType::Armor;
+    if (outcome == ids::dice::Jackpot) {
+        return "초대박";
     }
-    if (value == "consumable") {
-        return ItemType::Consumable;
+    return "실패";
+}
+
+inline bool isFailureOutcome(const std::string& outcome)
+{
+    return outcome == ids::dice::Failure;
+}
+
+inline std::vector<std::string> eventTypeIds()
+{
+    return {
+        ids::event::Story,
+        ids::event::Combat,
+        ids::event::ItemGain,
+        ids::event::StatChange,
+        ids::event::Dialogue,
+        ids::event::QuestUpdate,
+        ids::event::Rest,
+        ids::event::GameEnd,
+    };
+}
+
+inline std::vector<std::string> itemTypeIds()
+{
+    return {
+        ids::item::Weapon,
+        ids::item::Armor,
+        ids::item::Consumable,
+        ids::item::QuestItem,
+    };
+}
+
+inline std::vector<std::string> diceOutcomeIds()
+{
+    return {
+        ids::dice::Failure,
+        ids::dice::Success,
+        ids::dice::Jackpot,
+    };
+}
+
+inline std::string joinIds(const std::vector<std::string>& values, const std::string& separator = " | ")
+{
+    std::string joined;
+    for (const auto& value : values) {
+        if (!joined.empty()) {
+            joined += separator;
+        }
+        joined += value;
     }
-    if (value == "quest_item") {
-        return ItemType::QuestItem;
-    }
-    return ItemType::Invalid;
+    return joined;
 }
 
 inline int clampInt(int value, int low, int high)

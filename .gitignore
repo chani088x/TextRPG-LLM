@@ -1,2 +1,4 @@
 build/
+build-*/
+vcpkg_installed/
 logs/*.log

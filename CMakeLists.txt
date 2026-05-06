@@ -2,6 +2,10 @@ cmake_minimum_required(VERSION 3.20)
 
 project(LLM_TextRPG_v2 LANGUAGES CXX)
 
+include(CTest)
+
+find_package(CURL REQUIRED)
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -11,15 +15,21 @@ if(MSVC)
 endif()
 
 add_library(llm_module
-    src/llm/ContextBuilder.cpp
-    src/llm/LLMConfig.cpp
-    src/llm/LLMEventValidator.cpp
-    src/llm/LLMFallbackFactory.cpp
-    src/llm/LLMLogger.cpp
-    src/llm/LLMOutputParser.cpp
-    src/llm/LLMService.cpp
-    src/llm/OllamaClient.cpp
+    src/llm/LLM.cpp
+    src/llm/OpenAIChatClient.cpp
+    src/llm/OllamaChatClient.cpp
     src/llm/PromptBuilder.cpp
+    src/llm/ResponseParser.cpp
+    src/llm/StateApplier.cpp
+)
+
+add_library(combat_module
+    src/combat/CombatSystem.cpp
+)
+
+target_include_directories(combat_module
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
 
 target_include_directories(llm_module
@@ -33,18 +43,7 @@ if(WIN32)
     target_link_libraries(llm_module PUBLIC ws2_32)
 endif()
 
-enable_testing()
-
-add_executable(llm_module_tests
-    tests/test_llm_module.cpp
-)
-
-target_link_libraries(llm_module_tests
-    PRIVATE
-        llm_module
-)
-
-add_test(NAME llm_module_tests COMMAND llm_module_tests)
+target_link_libraries(llm_module PUBLIC CURL::libcurl)
 
 add_executable(llm_text_rpg
     main.cpp
@@ -53,4 +52,18 @@ add_executable(llm_text_rpg
 target_link_libraries(llm_text_rpg
     PRIVATE
         llm_module
+        combat_module
 )
+
+if(BUILD_TESTING)
+    add_executable(llm_engine_tests
+        tests/test_llm_engine.cpp
+    )
+
+    target_link_libraries(llm_engine_tests
+        PRIVATE
+            llm_module
+    )
+
+    add_test(NAME llm_engine_tests COMMAND $<TARGET_FILE:llm_engine_tests>)
+endif()
