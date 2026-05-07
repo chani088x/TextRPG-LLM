@@ -21,7 +21,7 @@ public:
     const std::string& description() const { return description_; }
     int                value()        const { return value_; }
 
-    virtual llm::ItemType type()    const = 0;
+    virtual std::string type()      const = 0;
     virtual std::string   summary() const = 0;
 
     // llm::Item -> game::Item 변환. type에 따라 적절한 서브클래스를 생성한다.

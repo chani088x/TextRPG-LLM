@@ -7,9 +7,9 @@ QuestItem::QuestItem(std::string name, std::string description, int value)
 {
 }
 
-llm::ItemType QuestItem::type() const
+std::string QuestItem::type() const
 {
-    return llm::ItemType::QuestItem;
+    return llm::ids::item::QuestItem;
 }
 
 std::string QuestItem::summary() const

@@ -12,9 +12,9 @@ Consumable::Consumable(std::string name, std::string description, int value,
 {
 }
 
-llm::ItemType Consumable::type() const
+std::string Consumable::type() const
 {
-    return llm::ItemType::Consumable;
+    return llm::ids::item::Consumable;
 }
 
 std::string Consumable::summary() const

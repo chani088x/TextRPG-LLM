@@ -1,4 +1,6 @@
 build/
-logs/*.log
+build-*/
+vcpkg_installed/
 .vs/
 .claude
+logs/*.log

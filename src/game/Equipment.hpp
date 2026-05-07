@@ -11,7 +11,7 @@ public:
     Equipment(std::string name, std::string description, int value,
               EquipSlot slot, int attackBonus, int defenseBonus);
 
-    llm::ItemType type()    const override;
+    std::string   type()    const override;
     std::string   summary() const override;
 
     EquipSlot slot()         const { return slot_; }

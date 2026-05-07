@@ -13,9 +13,9 @@ Equipment::Equipment(std::string name, std::string description, int value,
 {
 }
 
-llm::ItemType Equipment::type() const
+std::string Equipment::type() const
 {
-    return slot_ == EquipSlot::Weapon ? llm::ItemType::Weapon : llm::ItemType::Armor;
+    return slot_ == EquipSlot::Weapon ? llm::ids::item::Weapon : llm::ids::item::Armor;
 }
 
 std::string Equipment::summary() const

@@ -9,7 +9,7 @@ public:
     Consumable(std::string name, std::string description, int value,
                int hpRestore, int quantity = 1);
 
-    llm::ItemType type()    const override;
+    std::string   type()    const override;
     std::string   summary() const override;
 
     int  hpRestore() const { return hpRestore_; }

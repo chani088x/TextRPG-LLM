@@ -11,7 +11,7 @@ bool Inventory::addItem(std::unique_ptr<Item> item)
     }
 
     // Consumable은 같은 이름이 있으면 수량을 합산한다.
-    if (item->type() == llm::ItemType::Consumable) {
+    if (item->type() == llm::ids::item::Consumable) {
         for (auto& existing : items_) {
             if (existing->name() == item->name()) {
                 auto* existingConsumable = static_cast<Consumable*>(existing.get());
@@ -46,7 +46,7 @@ bool Inventory::removeItem(const std::string& name)
         return false;
     }
 
-    if ((*it)->type() == llm::ItemType::Consumable) {
+    if ((*it)->type() == llm::ids::item::Consumable) {
         auto* consumable = static_cast<Consumable*>(it->get());
         const bool hasRemaining = consumable->consume();
         if (!hasRemaining) {
@@ -81,8 +81,8 @@ std::vector<Equipment*> Inventory::getEquipments()
 {
     std::vector<Equipment*> result;
     for (auto& item : items_) {
-        if (item->type() == llm::ItemType::Weapon
-            || item->type() == llm::ItemType::Armor) {
+        if (item->type() == llm::ids::item::Weapon
+            || item->type() == llm::ids::item::Armor) {
             result.push_back(static_cast<Equipment*>(item.get()));
         }
     }
@@ -93,7 +93,7 @@ std::vector<Consumable*> Inventory::getConsumables()
 {
     std::vector<Consumable*> result;
     for (auto& item : items_) {
-        if (item->type() == llm::ItemType::Consumable) {
+        if (item->type() == llm::ids::item::Consumable) {
             result.push_back(static_cast<Consumable*>(item.get()));
         }
     }
