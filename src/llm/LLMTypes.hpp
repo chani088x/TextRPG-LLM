@@ -65,10 +65,13 @@ struct GameEvent {
     std::vector<std::string> choices;
     std::optional<Monster> monster;
     std::optional<Item> item;
+    // NPC 추가
+    std::optional<GeneratedNPC> newNPC;
     StatChanges statChanges;
     std::string memoryNote;
     bool usedFallback = false;
     std::vector<std::string> validationNotes;
+
 };
 
 // LLM에게 공개해도 되는 플레이어 상태 요약이다.
@@ -106,6 +109,17 @@ struct GameState {
     WorldState world;
     StoryMemory memory;
 };
+
+// NPC 생성에 필요한 정보
+struct GeneratedNPC{
+    std::string name;
+    std::string personality;
+    std::string speechStyle;
+    int affinity = 0; // NPC와의 친밀도, -100에서 100 사이
+    bool isMet = false;
+};
+
+
 
 inline std::string eventTypeToString(EventType type)
 {

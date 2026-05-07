@@ -37,6 +37,11 @@ std::string buildPrompt(const GameState& state, const std::string& playerInput)
     out << "combat의 monster 수치는 무시되므로 name과 description만 중요하다.\n";
     out << "JSON 외 텍스트는 출력하지 않는다.\n\n";
 
+    //NPC 관련 지침 추가
+    out << "새로운 장소나 상황에서 NPC가 필요하다면 즉석에서 NPC를 추가해도 된다.\n";
+    out << "NPC 생성 시 이름, 성격, 말투를 정하여 new_npc 필드로 반환한다. \n";
+    out << "이미 존재하는 인물이거나 NPC가 필요없는 상황에서는 new_npc를 null로 둔다.\n";
+
     out << "[현재 상태]\n";
     out << "턴: " << state.turnNumber << '\n';
     out << "위치: " << state.world.location << '\n';
@@ -56,6 +61,14 @@ std::string buildPrompt(const GameState& state, const std::string& playerInput)
     out << "  \"next_objective\": \"string\",\n";
     out << "  \"decision_hint\": \"string\",\n";
     out << "  \"choices\": [\"string\", \"string\"],\n";
+
+    // npc 생성 지침 추가
+    out << "  \"new_npc\": {\n";
+    out << "  \"name\": \"string\",\n";
+    out << "  \"personality\": \"string\",\n";
+    out << "  \"speech_style\": \"string\"\n";
+    out << "   },\n";
+
     out << "  \"monster\": null,\n";
     out << "  \"item\": null,\n";
     out << "  \"stat_changes\": {\"hp\": 0, \"gold\": 0, \"exp\": 0},\n";
@@ -171,6 +184,27 @@ std::optional<Item> readItem(const nlohmann::json& root)
     };
 }
 
+
+
+// NPC
+std::optional<GeneratedNPC> readGeneratedNPC(const nlohmann::json& root)
+{
+    if (!root.contains("new_npc") || !root["new_npc"].is_null() || !root["new_npc"].is_object()) {
+        return std::nullopt;
+    }
+
+    const auto& npc = root["new_npc"];
+    GeneratedNPC result;
+
+    result.name = npc.value("name", "알 수 없는 인물");
+    result.personality = npc.value("personality", "성격이 드러나지 않음");
+    result.speechStyle = npc.value("speech_style", "말투가 드러나지 않음");
+    result.affinity = 0;
+    result.isMet = true;
+
+    return result;
+}
+
 void repairEvent(GameEvent& event)
 {
     if (event.sceneText.empty()) {
@@ -264,6 +298,8 @@ GameEvent LLM::parseEvent(const std::string& rawText)
         event.choices = readChoices(root, event.eventType);
         event.monster = readMonster(root, event.eventType);
         event.item = readItem(root);
+        // NPC 읽기 추가
+        event.newNPC = readGeneratedNPC(root);
 
         if (root.contains("stat_changes") && root["stat_changes"].is_object()) {
             const auto& stats = root["stat_changes"];

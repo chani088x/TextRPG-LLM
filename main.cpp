@@ -3,6 +3,7 @@
 #include "game/Item.hpp"
 #include "game/QuestItem.hpp"
 #include "llm/LLM.hpp"
+#include "NPC/NPCManager.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -11,6 +12,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+
 
 using namespace textrpg::llm;
 using textrpg::game::Inventory;
@@ -222,10 +224,16 @@ void resolveCombat(GameState& state, const GameEvent& event)
         "전투 결과: 플레이어가 때리기만 사용해 " + result.monster.getName() + "를 쓰러뜨렸다.",
         5);
 }
-
 void applyEventToState(GameState& state, const GameEvent& event, const std::string& playerInput,
-                       Inventory& inventory)
+                       Inventory& inventory,
+                       textrpg::npc::NPCManager& npcManager)
 {
+    // NPC 생성 처리
+    if(event.newNPC.has_value()){
+        npcManager.addGeneratedNPC(event.newNPC.value());
+        std::cout << "\n새로운 NPC가 등장했습니다!\n";
+    }
+
     state.currentScene = event.sceneText;
 
     if (!event.nextObjective.empty()) {
@@ -271,6 +279,9 @@ int main(int argc, char** argv)
 
     LLM llm(llmOptions);
 
+    // NPC 매니저 초기화
+    textrpg::npc::NPCManager npcManager;
+
     GameState state = makeInitialState();
     std::vector<std::string> lastChoices;
 
@@ -306,7 +317,7 @@ int main(int argc, char** argv)
         const auto event = llm.generateEvent(state, playerInput);
         printEvent(event);
         resolveCombat(state, event);
-        applyEventToState(state, event, playerInput, inventory);
+        applyEventToState(state, event, playerInput, inventory, npcManager);
         lastChoices = event.choices;
 
         if (event.eventType == EventType::GameEnd) {
