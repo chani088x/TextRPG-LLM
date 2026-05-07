@@ -1,14 +1,20 @@
 #include "combat/CombatSystem.hpp"
+#include "game/Inventory.hpp"
+#include "game/Item.hpp"
+#include "game/QuestItem.hpp"
 #include "llm/LLM.hpp"
 
 #include <algorithm>
 #include <cctype>
 #include <iostream>
 #include <limits>
+#include <memory>
 #include <string>
 #include <vector>
 
 using namespace textrpg::llm;
+using textrpg::game::Inventory;
+using textrpg::game::QuestItem;
 
 namespace {
 
@@ -217,7 +223,8 @@ void resolveCombat(GameState& state, const GameEvent& event)
         5);
 }
 
-void applyEventToState(GameState& state, const GameEvent& event, const std::string& playerInput)
+void applyEventToState(GameState& state, const GameEvent& event, const std::string& playerInput,
+                       Inventory& inventory)
 {
     state.currentScene = event.sceneText;
 
@@ -235,7 +242,8 @@ void applyEventToState(GameState& state, const GameEvent& event, const std::stri
     state.player.exp = std::max(0, state.player.exp + event.statChanges.exp);
 
     if (event.item.has_value()) {
-        state.player.inventory.push_back(event.item->name);
+        inventory.addItem(textrpg::game::Item::fromLLMItem(event.item.value()));
+        state.player.inventory = inventory.getItemNames();
     }
 
     pushLimited(state.memory.importantChoices, "턴 " + std::to_string(state.turnNumber) + " 선택: " + playerInput, 5);
@@ -266,6 +274,11 @@ int main(int argc, char** argv)
     GameState state = makeInitialState();
     std::vector<std::string> lastChoices;
 
+    Inventory inventory;
+    for (const auto& name : state.player.inventory) {
+        inventory.addItem(std::make_unique<QuestItem>(name, "", 0));
+    }
+
     std::cout << "LLM Text RPG demo 시작\n";
     std::cout << "model: " << llmOptions.model << "\n";
     std::cout << "전투는 별도 모듈에서 처리합니다. 현재 스킬은 양쪽 모두 때리기만 있습니다.\n";
@@ -293,7 +306,7 @@ int main(int argc, char** argv)
         const auto event = llm.generateEvent(state, playerInput);
         printEvent(event);
         resolveCombat(state, event);
-        applyEventToState(state, event, playerInput);
+        applyEventToState(state, event, playerInput, inventory);
         lastChoices = event.choices;
 
         if (event.eventType == EventType::GameEnd) {

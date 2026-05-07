@@ -10,6 +10,22 @@ if(MSVC)
     add_compile_options(/utf-8)
 endif()
 
+add_library(game_module
+    src/game/Item.cpp
+    src/game/Equipment.cpp
+    src/game/Consumable.cpp
+    src/game/QuestItem.cpp
+    src/game/Inventory.cpp
+)
+
+target_include_directories(game_module
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+        ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+
+target_link_libraries(game_module PUBLIC llm_module)
+
 add_library(llm_module
     src/llm/LLM.cpp
   "src/combat/CombatAction.hpp")
@@ -40,6 +56,7 @@ add_executable(llm_text_rpg
 
 target_link_libraries(llm_text_rpg
     PRIVATE
+        game_module
         llm_module
         combat_module
 )
