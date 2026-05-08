@@ -54,6 +54,15 @@ enum class StoryChoice {
     Investigate
 };
 
+// 퀘스트 정보를 담는 구조체다.
+struct Quest{
+    std::string title;
+    std::string description;
+    bool isAccepted = false;
+    bool isCompleted = false;
+    std::string reward;
+};
+
 // LLM은 몬스터 후보만 만든다. 실제 전투 결과 계산은 전투 시스템의 책임이다.
 struct Monster {
     std::string name;

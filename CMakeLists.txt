@@ -35,6 +35,17 @@ add_library(combat_module
     src/combat/CombatSystem.cpp
 )
 
+add_library(npc_module
+    src/NPC/NPCManager.cpp
+)
+
+target_include_directories(npc_module
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+
+target_link_libraries(npc_module PUBLIC llm_module)
+
 target_include_directories(game_module
     PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/src
@@ -70,6 +81,7 @@ target_link_libraries(llm_text_rpg
         game_module
         llm_module
         combat_module
+        npc_module
 )
 
 if(BUILD_TESTING)

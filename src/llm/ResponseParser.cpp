@@ -4,6 +4,7 @@
 #include <nlohmann/json.hpp>
 
 #include <exception>
+#include <iostream>
 
 namespace textrpg::llm::internals {
 namespace {
@@ -309,7 +310,7 @@ GameEvent ResponseParser::parseEvent(const std::string& rawText, const std::stri
 }
 
 ActionResult ResponseParser::parseActionResult(const std::string& rawText, const std::string& diceOutcome)
-{
+{    
     std::string jsonText;
     if (!extractJsonObject(rawText, jsonText)) {
         return fallbackActionResult("no JSON object found", diceOutcome);

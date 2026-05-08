@@ -1,5 +1,8 @@
 #include "combat/CombatSystem.hpp"
 #include "llm/LLM.hpp"
+#include "NPC/NPCManager.hpp"
+
+#include <windows.h>
 
 #include <algorithm>
 #include <cctype>
@@ -434,7 +437,9 @@ std::string resolveDefaultAction(GameState& state, std::optional<Monster>& activ
 
 int main(int argc, char** argv)
 {
+    std::setlocale(LC_ALL, "ko_KR.UTF-8");
     std::srand(static_cast<unsigned int>(std::time(nullptr)));
+
 
     int scriptArgIndex = 2;
     LLMOptions llmOptions = makeLlmOptions(argc, argv, scriptArgIndex);
@@ -444,11 +449,39 @@ int main(int argc, char** argv)
     std::size_t scriptedIndex = 0;
 
     LLM llm(llmOptions);
+    textrpg::npc::NPCManager npcManager;
 
     GameState state = makeInitialState();
     const auto initialWorld = llm.generateInitialWorld(state);
     EventRoll currentSceneType = EventRoll::NonCombat;
     std::optional<Monster> activeMonster;
+
+
+    // 퀘스트 데이터 생성
+    textrpg::llm::Quest AlexanderQuest;
+    AlexanderQuest.title = "마을의 문제 해결";
+    AlexanderQuest.description = "주점 운영을 위해 필요한 늑대의 털 5개를 모아달라고 부탁한다.";
+    AlexanderQuest.reward = "골드 50, 경험치 100";
+    AlexanderQuest.isAccepted = false;
+
+    // 초기 NPC 설정 - 알렉산더와 그의 퀘스트
+    textrpg::npc::NPCProfile Alexander;
+    Alexander.name = "알렉산더";
+    Alexander.personality = "쾌활하고 에너지가 넘침";
+    Alexander.speechStyle = "호탕한 말투";
+    Alexander.homeLocation = "village pub";
+    Alexander.aliases = {"알렉산더", "Alexander"};
+    Alexander.availableQuest = AlexanderQuest;
+
+    npcManager.addNPC(
+        Alexander.name,
+        Alexander.aliases,
+        Alexander.personality,
+        Alexander.speechStyle,
+        Alexander.homeLocation,
+        Alexander.availableQuest
+    );
+
 
     std::cout << "LLM Text RPG demo 시작\n";
     std::cout << "provider: " << providerName(llmOptions.provider) << "\n";
@@ -480,8 +513,19 @@ int main(int argc, char** argv)
 
         if (playerAction.isCustom) {
             const auto [diceValue, outcome] = rollD6();
-            const auto actionResult = llm.generateActionResult(state, playerAction.customText, outcome);
+            std::string npcContextForAction = npcManager.generateNPCPrompt(state.world.location + " " + playerAction.customText);
+
+            const auto actionResult = llm.generateActionResult(state, playerAction.customText + npcContextForAction, outcome);
             printActionResult(actionResult, diceValue, outcome);
+            
+            if(actionResult.resultType == ids::event::QuestUpdate){
+                std::cout << "\n[시스템] 퀘스트 정보가 업데이트되었습니다.\n";
+                for(const auto& note : actionResult.notes){
+                    if(note.find("accepted") != std::string::npos){
+                        std::cout << "퀘스트 수락: " << note << '\n';
+                    }
+                }
+            }
 
             std::ostringstream out;
             out << "고유 행동: " << playerAction.customText << '\n';
@@ -492,8 +536,27 @@ int main(int argc, char** argv)
             actionContext = resolveDefaultAction(state, activeMonster, playerAction);
         }
 
-        const auto event = llm.generateNextEvent(state, actionContext);
+        std::string npcContext = npcManager.generateNPCPrompt(state.world.location + " " + playerAction.customText);
+        // 강제 대화 생성
+        std::string conversationConstraint = "";
+        if(playerAction.customText.find("Say") != std::string::npos || playerAction.customText.find("Talk") != std::string::npos){
+            conversationConstraint = "\n[규칙 : 현재 NPC와 대화 중입니다. 절대로 장면을 요약하거나 장소를 이동하지 마십시오. 오직 이 NPC의 직접 대사(\"...\")로만 응답하시오.]";
+        }
+
+        std::string questDirective = "";
+        if(playerAction.customText.find("Quest") != std::string::npos ||
+           playerAction.customText.find("quest") != std::string::npos) {
+            questDirective = "\n[규칙 : 플레이어가 퀘스트를 수락하면 반드시 응답의 'notes'배열에 반드시 \"accepted: 퀘스트제목\"을 포함하하고 result_type을 QuestUpdate로 설정하세요.]";
+
+        }
+
+        const auto event = llm.generateNextEvent(state, actionContext + npcContext + conversationConstraint + questDirective);
         std::cout << "\n다음 이벤트: LLM 선택 -> " << eventTypeToString(event.eventType) << '\n';
+
+        if (event.newNPC.has_value()){
+            npcManager.addGeneratedNPC(event.newNPC.value());
+            std::cout << "\n새로운 NPC가 등장했습니다: " << event.newNPC->name << '\n';
+        }
 
         printEvent(event);
 
@@ -516,7 +579,7 @@ int main(int argc, char** argv)
         }
 
         std::cout << "\n계속하려면 Enter를 누르세요.";
-        std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+        std::cin.ignore((std::numeric_limits<std::streamsize>::max)(), '\n');
     }
 
     std::cout << "플레이어 HP가 0이 되어 게임을 종료합니다.\n";
