@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <cstddef>
 #include <optional>
 #include <string>
 #include <vector>
@@ -43,8 +44,14 @@ enum class EventRoll {
 
 enum class CombatChoice {
     Attack,
+    Skill,
     Item,
     Custom
+};
+
+enum class StoryChoice {
+    Advance,
+    Investigate
 };
 
 // LLM은 몬스터 후보만 만든다. 실제 전투 결과 계산은 전투 시스템의 책임이다.
@@ -79,10 +86,16 @@ struct GeneratedNPC {
     bool isMet = false;
 };
 
-struct Quest {
-    std::string title;
-    std::string description;
-    std::string reward;
+struct ActionResult {
+    std::string resultText;
+    std::string resultType;
+    std::string itemName;
+    std::string itemDescription;
+    int hpDelta = 0;
+    int goldDelta = 0;
+    int expDelta = 0;
+    bool usedFallback = false;
+    std::vector<std::string> notes;
 };
 
 struct InitialWorld {
@@ -90,24 +103,9 @@ struct InitialWorld {
     std::string sceneText;
     std::string currentObjective;
     std::string decisionHint;
-    bool baseCandidate = false;
     std::string memoryNote;
     bool usedFallback = false;
     std::vector<std::string> notes;
-};
-
-// 주인공 입장에서 생성되는 시작 서사다.
-// 한 번 생성되면 기록 JSON에 저장되어 이후 장면 생성의 개인적 동기로 쓰인다.
-struct Prologue {
-    bool generated = false;
-    std::string text;
-    std::string protagonistWound;
-    std::string personalGoal;
-    std::string openingLocation;
-    std::string firstObjective;
-    std::string memoryNote;
-    bool usedFallback = false;
-    std::vector<std::string> validationNotes;
 };
 
 // GameEngine에 반환되는 LLM 모듈의 최종 산출물이다.
@@ -118,44 +116,11 @@ struct GameEvent {
     std::string eventType = ids::event::Story;
     std::string nextObjective;
     std::string decisionHint;
-    bool baseCandidate = false;
     std::vector<std::string> choices;
     std::optional<Monster> monster;
     std::optional<Item> item;
+    std::optional<GeneratedNPC> newNPC;
     StatChanges statChanges;
-    std::string memoryNote;
-    bool usedFallback = false;
-    std::vector<std::string> validationNotes;
-};
-
-// 고유 행동 판정의 직접 결과다.
-// 다음 장면 선택(GameEvent)과 분리해서, "행동 결과 적용 후 다음 이벤트 선택" 흐름을 만든다.
-struct ActionResult {
-    std::string resultText;
-    std::string location;
-    StatChanges statChanges;
-    std::optional<Item> item;
-    std::string nextEventHint;
-    bool baseCandidate = false;
-    std::string memoryNote;
-    bool usedFallback = false;
-    std::vector<std::string> validationNotes;
-};
-
-struct BossInfo {
-    bool known = false;
-    std::string name;
-    std::string location;
-    std::string weakness;
-    std::string description;
-};
-
-// 거점 장로와의 1회성 대화 결과다.
-// LLM은 후보 정보를 만들고, C++ 엔진이 기록에 저장하는 순간 확정된다.
-struct ElderDialogueResult {
-    std::string dialogue;
-    BossInfo boss;
-    std::string questUpdate;
     std::string memoryNote;
     bool usedFallback = false;
     std::vector<std::string> validationNotes;
@@ -171,7 +136,7 @@ struct PlayerSnapshot {
     int defense = 5;
     int gold = 0;
     int exp = 0;
-    std::vector<Item> inventory;
+    std::vector<std::string> inventory;
 };
 
 // 현재 위치와 목표처럼 스토리 생성에 필요한 세계 상태 요약이다.
@@ -179,7 +144,6 @@ struct WorldState {
     std::string location = "이름 없는 길";
     std::string currentObjective = "다음 단서를 찾는다";
     std::string decisionHint = "현재 장면을 보고 다음 행동의 위험과 보상을 판단한다";
-    bool baseCandidate = false;
     std::vector<std::string> fixedRules;
 };
 
@@ -189,47 +153,6 @@ struct StoryMemory {
     std::vector<std::string> importantChoices;
 };
 
-struct GameRecords {
-    struct EventRecord {
-        int turnNumber = 0;
-        std::string eventType = ids::event::Story;
-        std::string eventLabel;
-        std::string summary;
-    };
-
-    struct SnapshotState {
-        bool saved = false;
-        int turnNumber = 1;
-        std::string currentScene;
-        PlayerSnapshot player;
-        WorldState world;
-        StoryMemory memory;
-    };
-
-    SnapshotState snapshot;
-    std::vector<std::string> questLog;
-    std::vector<Item> obtainedItems;
-    std::vector<Monster> encounteredEnemies;
-    std::vector<EventRecord> eventHistory;
-    Prologue prologue;
-    struct DangerState {
-        int level = 0;
-        int lastIncrease = 0;
-        int threshold = 10;
-    } danger;
-    struct BaseState {
-        bool unlocked = false;
-        std::string location;
-        std::vector<std::string> features;
-        std::vector<std::string> declinedLocations;
-    } base;
-    struct ElderState {
-        bool introduced = false;
-        bool talked = false;
-    } elder;
-    BossInfo boss;
-};
-
 // LLM 엔진이 생성과 상태 반영에 사용하는 최소 게임 상태다.
 struct GameState {
     int turnNumber = 0;
@@ -237,7 +160,6 @@ struct GameState {
     PlayerSnapshot player;
     WorldState world;
     StoryMemory memory;
-    GameRecords records;
 };
 
 inline bool isKnownEventType(const std::string& value)
@@ -259,27 +181,6 @@ inline std::string normalizeEventType(const std::string& value, const std::strin
 
 inline std::string eventTypeToString(const std::string& type)
 {
-    if (type == ids::event::Story) {
-        return "장면";
-    }
-    if (type == ids::event::Combat) {
-        return "전투";
-    }
-    if (type == ids::event::ItemGain) {
-        return "발견";
-    }
-    if (type == ids::event::Dialogue) {
-        return "대화";
-    }
-    if (type == ids::event::QuestUpdate) {
-        return "퀘스트";
-    }
-    if (type == ids::event::Rest) {
-        return "휴식";
-    }
-    if (type == ids::event::GameEnd) {
-        return "엔딩";
-    }
     return type;
 }
 
@@ -296,92 +197,26 @@ inline std::string normalizeItemType(const std::string& value)
     return isKnownItemType(value) ? value : ids::item::Consumable;
 }
 
-inline bool containsAnyKeyword(const std::string& text, const std::vector<std::string>& keywords)
-{
-    for (const auto& keyword : keywords) {
-        if (!keyword.empty() && text.find(keyword) != std::string::npos) {
-            return true;
-        }
-    }
-    return false;
-}
-
-inline bool isQuestLikeItemName(const std::string& name)
-{
-    return containsAnyKeyword(name, {
-        "인장",
-        "증표",
-        "표식",
-        "열쇠",
-        "문서",
-        "단서",
-    });
-}
-
-inline bool descriptionImpliesPower(const std::string& description)
-{
-    return containsAnyKeyword(description, {
-        "공격",
-        "방어",
-        "회복",
-        "강화",
-        "전투",
-        "피해",
-        "무적",
-        "초월",
-        "강력",
-        "개쩌",
-    });
-}
-
-inline void sanitizeItem(Item& item, std::vector<std::string>* notes = nullptr)
-{
-    const auto rawType = item.type;
-    item.type = normalizeItemType(item.type);
-    if (notes && rawType != item.type) {
-        notes->push_back("item type was invalid and repaired");
-    }
-
-    if (isQuestLikeItemName(item.name) && item.type != ids::item::QuestItem) {
-        item.type = ids::item::QuestItem;
-        if (notes) {
-            notes->push_back("quest-like item type was forced to quest_item");
-        }
-    }
-
-    if (item.type == ids::item::QuestItem) {
-        if (item.value != 0 && notes) {
-            notes->push_back("quest_item value was forced to 0");
-        }
-        item.value = 0;
-        if (descriptionImpliesPower(item.description)) {
-            item.description = "진행 단서로 쓰이는 평범한 물건이다.";
-            if (notes) {
-                notes->push_back("quest_item power-like description was repaired");
-            }
-        }
-    } else if (item.type == ids::item::Consumable) {
-        item.value = std::max(0, std::min(item.value, 20));
-    } else {
-        item.value = std::max(0, std::min(item.value, 30));
-    }
-}
-
 inline std::string itemTypeToString(const std::string& type)
 {
-    if (type == ids::item::Weapon) {
-        return "무기";
-    }
-    if (type == ids::item::Armor) {
-        return "방어구";
-    }
-    if (type == ids::item::Consumable) {
-        return "소모품";
-    }
-    if (type == ids::item::QuestItem) {
-        return "단서";
-    }
     return type;
+}
+
+inline bool isKnownDiceOutcome(const std::string& value)
+{
+    return value == ids::dice::Failure
+        || value == ids::dice::Success
+        || value == ids::dice::Jackpot;
+}
+
+inline std::string normalizeDiceOutcome(const std::string& value)
+{
+    return isKnownDiceOutcome(value) ? value : ids::dice::Failure;
+}
+
+inline std::string diceOutcomeToString(const std::string& outcome)
+{
+    return outcome;
 }
 
 inline std::string diceOutcomeToKorean(const std::string& outcome)
@@ -395,6 +230,11 @@ inline std::string diceOutcomeToKorean(const std::string& outcome)
     return "실패";
 }
 
+inline bool isFailureOutcome(const std::string& outcome)
+{
+    return outcome == ids::dice::Failure;
+}
+
 inline std::vector<std::string> eventTypeIds()
 {
     return {
@@ -406,6 +246,25 @@ inline std::vector<std::string> eventTypeIds()
         ids::event::QuestUpdate,
         ids::event::Rest,
         ids::event::GameEnd,
+    };
+}
+
+inline std::vector<std::string> itemTypeIds()
+{
+    return {
+        ids::item::Weapon,
+        ids::item::Armor,
+        ids::item::Consumable,
+        ids::item::QuestItem,
+    };
+}
+
+inline std::vector<std::string> diceOutcomeIds()
+{
+    return {
+        ids::dice::Failure,
+        ids::dice::Success,
+        ids::dice::Jackpot,
     };
 }
 

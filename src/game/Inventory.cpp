@@ -1,18 +1,8 @@
 #include "game/Inventory.hpp"
 
 #include <algorithm>
-#include <utility>
 
 namespace textrpg::game {
-
-Inventory Inventory::fromLLMItems(const std::vector<llm::Item>& items)
-{
-    Inventory inventory;
-    for (const auto& item : items) {
-        inventory.addLLMItem(item);
-    }
-    return inventory;
-}
 
 bool Inventory::addItem(std::unique_ptr<Item> item)
 {
@@ -43,11 +33,6 @@ bool Inventory::addItem(std::unique_ptr<Item> item)
 
     items_.push_back(std::move(item));
     return true;
-}
-
-bool Inventory::addLLMItem(const llm::Item& item)
-{
-    return addItem(Item::fromLLMItem(item));
 }
 
 bool Inventory::removeItem(const std::string& name)
@@ -123,41 +108,6 @@ std::vector<std::string> Inventory::getItemNames() const
         names.push_back(item->name());
     }
     return names;
-}
-
-std::vector<std::string> Inventory::summaries(std::size_t maxItems) const
-{
-    std::vector<std::string> result;
-    const auto limit = maxItems == 0 ? items_.size() : std::min(maxItems, items_.size());
-    result.reserve(limit);
-    for (std::size_t i = 0; i < limit; ++i) {
-        result.push_back(items_[i]->summary());
-    }
-    return result;
-}
-
-std::vector<llm::Item> Inventory::toLLMItems() const
-{
-    std::vector<llm::Item> result;
-    for (const auto& item : items_) {
-        llm::Item converted {
-            item->name(),
-            item->type(),
-            item->description(),
-            item->value(),
-        };
-
-        if (item->type() == llm::ids::item::Consumable) {
-            const auto* consumable = static_cast<const Consumable*>(item.get());
-            for (int count = 0; count < std::max(1, consumable->quantity()); ++count) {
-                result.push_back(converted);
-            }
-            continue;
-        }
-
-        result.push_back(converted);
-    }
-    return result;
 }
 
 } // namespace textrpg::game
