@@ -18,7 +18,7 @@ std::string resolveModel(const LLMOptions& options)
     if (!options.model.empty()) {
         return options.model;
     }
-    return "aravhawk/gemma4:26b";
+    return "0xIbra/supergemma4-26b-uncensored-gguf-v2:Q4_K_M";
 }
 
 } // namespace

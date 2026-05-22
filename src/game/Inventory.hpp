@@ -4,7 +4,6 @@
 #include "game/Equipment.hpp"
 #include "game/Item.hpp"
 
-#include <cstddef>
 #include <memory>
 #include <optional>
 #include <string>
@@ -19,7 +18,6 @@ public:
     // 아이템 추가. Consumable은 같은 이름끼리 수량을 합산한다.
     // 슬롯이 가득 차면 false를 반환한다.
     bool addItem(std::unique_ptr<Item> item);
-    bool addLLMItem(const llm::Item& item);
 
     // 이름으로 아이템 한 개 제거 (Consumable이면 수량만 감소).
     // 없으면 false를 반환한다.
@@ -35,10 +33,6 @@ public:
 
     // LLM PlayerSnapshot 전달용 이름 목록
     std::vector<std::string> getItemNames() const;
-    std::vector<std::string> summaries(std::size_t maxItems = 0) const;
-    std::vector<llm::Item> toLLMItems() const;
-
-    static Inventory fromLLMItems(const std::vector<llm::Item>& items);
 
     const std::vector<std::unique_ptr<Item>>& items() const { return items_; }
     int  size()   const { return static_cast<int>(items_.size()); }

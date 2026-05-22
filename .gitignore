@@ -4,4 +4,3 @@ vcpkg_installed/
 .vs/
 .claude
 logs/*.log
-data/game_records.json

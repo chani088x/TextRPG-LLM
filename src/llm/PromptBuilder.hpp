@@ -8,14 +8,14 @@ namespace textrpg::llm::internals {
 
 class PromptBuilder {
 public:
-    static std::string buildProloguePrompt(const GameState& state);
+    static std::string buildCombatPrompt(const GameState& state, const std::string& actionContext);
+    static std::string buildStoryPrompt(const GameState& state, const std::string& actionContext);
     static std::string buildNextEventPrompt(const GameState& state, const std::string& actionContext);
     static std::string buildActionResultPrompt(
         const GameState& state,
         const std::string& customInput,
         const std::string& diceOutcome);
-    static std::string buildElderDialoguePrompt(const GameState& state);
-    static std::string buildInitialWorldPrompt(const GameState& state);
+    static std::string buildInitialWorldPrompt();
 };
 
 } // namespace textrpg::llm::internals
