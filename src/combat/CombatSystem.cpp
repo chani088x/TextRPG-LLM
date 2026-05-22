@@ -1,4 +1,6 @@
 #include "combat/CombatSystem.hpp"
+#include <iostream>
+#include <string>
 
 namespace textrpg::combat {
 
@@ -6,10 +8,40 @@ namespace textrpg::combat {
     {
         CombatResult result;
 
-        // 한쪽이 쓰러질 때까지 전투
         while (!player.isDead() && !monster.isDead())
         {
-            //선공 판정
+            std::cout << "\n========================================\n";
+            std::cout << "[전투 중] " << player.getName() << " HP: " << player.getHp()
+                << "  VS  " << monster.getName() << " HP: " << monster.getHp() << "\n";
+            std::cout << "========================================\n";
+
+            // 1. 플레이어 스킬 선택 메뉴
+            std::cout << "사용할 스킬을 선택하세요:\n";
+            const auto& playerSkills = player.getSkills();
+            for (size_t i = 0; i < playerSkills.size(); ++i) {
+                std::cout << "  " << i + 1 << ". " << playerSkills[i]->getName() << "\n";
+            }
+            std::cout << "선택: ";
+
+            // 플레이어 입력 받기
+            std::string input;
+            std::getline(std::cin, input);
+
+            int pChoice = 0;
+            try { pChoice = std::stoi(input) - 1; }
+            catch (...) { pChoice = 0; } // 엔터만 치거나 이상한 글자 쓰면 1번 스킬로 강제
+
+            if (pChoice < 0 || pChoice >= playerSkills.size()) {
+                pChoice = 0;
+            }
+
+            // 2. 몬스터 스킬은 무작위로 선택
+            int mChoice = 0;
+            if (!monster.getSkills().empty()) {
+                mChoice = std::rand() % monster.getSkills().size();
+            }
+
+            // 3. 스피드 비교 (포켓몬 스타일 선공 판정)
             bool playerGoesFirst = player.getSpeed() >= monster.getSpeed();
 
             Combatant* first = playerGoesFirst ? &player : &monster;
@@ -18,22 +50,30 @@ namespace textrpg::combat {
             CombatActor firstActor = playerGoesFirst ? CombatActor::Player : CombatActor::Monster;
             CombatActor secondActor = playerGoesFirst ? CombatActor::Monster : CombatActor::Player;
 
-            // 2. 선공의 턴
-            if (!first->getSkills().empty()) 
-            {
-                first->getSkills()[0]->execute(firstActor, *first, *second, result);
+            int firstSkillIdx = playerGoesFirst ? pChoice : mChoice;
+            int secondSkillIdx = playerGoesFirst ? mChoice : pChoice;
+
+            std::cout << "\n";
+
+            // 4. 선공의 행동 실행 및 즉시 출력
+            if (!first->getSkills().empty()) {
+                first->getSkills()[firstSkillIdx]->execute(firstActor, *first, *second, result);
+                std::cout << result.turns.back().description << "\n"; // 방금 행동한 텍스트 출력
             }
-           
+
+            // 선공의 공격으로 타겟이 쓰러졌다면 루프 탈출
             if (second->isDead()) { break; }
 
-            // 4. 후공의 턴
-            if (!second->getSkills().empty()) 
-            {
-                second->getSkills()[0]->execute(secondActor, *second, *first, result);
+            // 5. 후공의 행동 실행 및 즉시 출력
+            if (!second->getSkills().empty()) {
+                second->getSkills()[secondSkillIdx]->execute(secondActor, *second, *first, result);
+                std::cout << result.turns.back().description << "\n";
             }
+
+            std::cout << "----------------------------------------\n";
         }
 
-        // 전투 결과 정산
+        // 전투 종료 후 최종 정산
         result.winner = (!player.isDead()) ? CombatWinner::Player : CombatWinner::Monster;
         result.player = std::move(player);
         result.monster = std::move(monster);

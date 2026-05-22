@@ -31,6 +31,7 @@ namespace textrpg::combat {
     {
     public:
         virtual ~Skill() = default;
+        virtual std::string getName() const = 0;
         virtual std::unique_ptr<Skill> clone() const = 0;
         virtual void execute(CombatActor actor, Combatant& attacker, Combatant& target, CombatResult& result) const = 0;
     };
@@ -125,6 +126,8 @@ namespace textrpg::combat {
     //스킬 구현체 (BasicAttack)
     class BasicAttack : public Skill {
     public:
+        std::string getName() const override { return "기본 공격"; } // 이름 추가
+
         std::unique_ptr<Skill> clone() const override {
             return std::make_unique<BasicAttack>(*this);
         }
@@ -132,7 +135,24 @@ namespace textrpg::combat {
         void execute(CombatActor actor, Combatant& attacker, Combatant& target, CombatResult& result) const override {
             int damage = attacker.getAttack();
             int actualDamage = target.receiveDamage(damage);
-            std::string desc = attacker.getName() + "이(가) " + std::to_string(actualDamage) + "의 피해를 입혔습니다.";
+            std::string desc = attacker.getName() + "이(가) [" + getName() + "]! " + std::to_string(actualDamage) + "의 피해를 입혔습니다.";
+
+            result.turns.push_back(CombatTurn{ actor, SkillType::Attack, damage, target.getHp(), std::move(desc) });
+        }
+    };
+
+    class CriticalHit : public Skill {
+    public:
+        std::string getName() const override { return "급소 찌르기"; } // 이름 추가
+
+        std::unique_ptr<Skill> clone() const override {
+            return std::make_unique<CriticalHit>(*this);
+        }
+
+        void execute(CombatActor actor, Combatant& attacker, Combatant& target, CombatResult& result) const override {
+            int damage = attacker.getAttack() * 2;
+            int actualDamage = target.receiveDamage(damage);
+            std::string desc = attacker.getName() + "의 [" + getName() + "]!! " + std::to_string(actualDamage) + "의 치명적인 피해를 입혔습니다.";
 
             result.turns.push_back(CombatTurn{ actor, SkillType::Attack, damage, target.getHp(), std::move(desc) });
         }
@@ -141,6 +161,7 @@ namespace textrpg::combat {
     inline Combatant makeDefaultPlayer() {
         Combatant player{ "플레이어", 999, 9, 0, 10 };
         player.addSkill(std::make_unique<BasicAttack>());
+        player.addSkill(std::make_unique<CriticalHit>());
         return player;
     }
 
