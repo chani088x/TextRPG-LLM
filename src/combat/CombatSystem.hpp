@@ -2,13 +2,13 @@
 
 #include "combat/CombatTypes.hpp"
 
-namespace textrpg::combat {
+namespace textrpg::combat 
+{
 
-class CombatSystem {
-public:
-    CombatResult run(Combatant player, Combatant monster) const;
-private:
-    void Action(CombatActor actor, Combatant& attacker, Combatant& target, SkillType type, CombatResult& result) const;
-};
+    class CombatSystem 
+    {
+    public:
+        CombatResult run(Combatant player, Combatant monster) const;
+    };
 
 } // namespace textrpg::combat

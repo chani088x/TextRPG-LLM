@@ -475,6 +475,27 @@ int main(int argc, char** argv)
             return 0;
         }
 
+		//"전투테스트" 입력으로 강제 전투 모드 진입 (디버그용)
+        if (input == "전투테스트") {
+            currentSceneType = EventRoll::Combat;
+
+            textrpg::llm::Monster testMonster;
+            testMonster.name = "테스트용 더미";
+            testMonster.hp = 30;
+            testMonster.attack = 2;
+            testMonster.defense = 0;
+            testMonster.description = "전투 시스템 테스트를 위해 강제로 소환된 몬스터입니다.";
+
+            activeMonster = testMonster;
+
+            std::cout << "\n[시스템] 강제 전투 모드로 진입합니다!\n";
+            std::cout << "계속하려면 Enter를 누르세요.";
+            std::cin.get(); // 잠시 대기
+            continue; // 이번 턴의 LLM 연산을 건너뛰고 바로 다음 루프(전투 화면)로 이동
+        }
+        // ==========================================
+
+   
         auto playerAction = parsePlayerAction(currentSceneType, input);
         std::string actionContext;
 
