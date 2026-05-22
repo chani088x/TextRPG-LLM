@@ -14,6 +14,32 @@ namespace textrpg::combat {
         Draw //당장은 사용 x
     };
 
+    enum class ElementType {
+        Normal, // 노말
+        Fire,   // 불
+        Water,  // 물
+        Grass,   // 풀
+		Dark,   // 어둠
+		Light   // 빛
+    };
+
+    inline float getElementMultiplier(ElementType attackType, ElementType defendType) {
+        // 1. 공격에 유리한 경우 (2배 데미지)
+        if (attackType == ElementType::Fire && defendType == ElementType::Grass) return 2.0f;
+        if (attackType == ElementType::Water && defendType == ElementType::Fire) return 2.0f;
+        if (attackType == ElementType::Grass && defendType == ElementType::Water) return 2.0f;
+		if (attackType == ElementType::Dark && defendType == ElementType::Light) return 2.0f;
+		if (attackType == ElementType::Light && defendType == ElementType::Dark) return 2.0f;
+
+        // 2. 공격에 불리한 경우 (절반 데미지)
+        if (attackType == ElementType::Fire && defendType == ElementType::Water) return 0.5f;
+        if (attackType == ElementType::Water && defendType == ElementType::Grass) return 0.5f;
+        if (attackType == ElementType::Grass && defendType == ElementType::Fire) return 0.5f;
+
+        // 3. 그 외의 경우 (상성 없음, 1배 데미지)
+        return 1.0f;
+    }
+
     enum class CombatActor {
         Player,
         Monster
@@ -27,11 +53,14 @@ namespace textrpg::combat {
     class Combatant;
     struct CombatResult;
 
-    class Skill 
-    {
+    class Skill {
     public:
         virtual ~Skill() = default;
         virtual std::string getName() const = 0;
+        
+        //기본은 노말 타입
+        virtual ElementType getElement() const { return ElementType::Normal; }
+
         virtual std::unique_ptr<Skill> clone() const = 0;
         virtual void execute(CombatActor actor, Combatant& attacker, Combatant& target, CombatResult& result) const = 0;
     };
@@ -63,20 +92,20 @@ namespace textrpg::combat {
         int attack;
         int defense;
         int speed;
+        ElementType element; //방어 속성
 
         std::vector<std::unique_ptr<Skill>> skills;
         std::vector<std::unique_ptr<StatusEffect>> statuses;
 
     public:
-        Combatant() : name("default"), hp(10), maxHp(100), attack(1), defense(0), speed(5) {}
-        Combatant(std::string n, int h, int a, int d, int s = 5)
-            : name(std::move(n)), hp(h), maxHp(h), attack(a), defense(d), speed(s) {
-        }
+        Combatant() : name("default"), hp(10), maxHp(100), attack(1), defense(0), speed(5), element(ElementType::Normal) {}
+        Combatant(std::string n, int h, int a, int d, int s = 5, ElementType elem = ElementType::Normal)
+            : name(std::move(n)), hp(h), maxHp(h), attack(a), defense(d), speed(s), element(elem) {}
 
         //복사 생성자
         Combatant(const Combatant& other)
             : name(other.name), hp(other.hp), maxHp(other.maxHp),
-            attack(other.attack), defense(other.defense), speed(other.speed)
+			attack(other.attack), defense(other.defense), speed(other.speed), element(other.element)
         {
             for (const auto& skill : other.skills) skills.push_back(skill->clone());
             for (const auto& status : other.statuses) statuses.push_back(status->clone());
@@ -86,7 +115,7 @@ namespace textrpg::combat {
         Combatant& operator=(const Combatant& other) {
             if (this != &other) {
                 name = other.name; hp = other.hp; maxHp = other.maxHp;
-                attack = other.attack; defense = other.defense; speed = other.speed;
+				attack = other.attack; defense = other.defense; speed = other.speed; element = other.element;
                 skills.clear(); statuses.clear();
                 for (const auto& skill : other.skills) skills.push_back(skill->clone());
                 for (const auto& status : other.statuses) statuses.push_back(status->clone());
@@ -117,6 +146,8 @@ namespace textrpg::combat {
         void addStatus(std::unique_ptr<StatusEffect> status) { statuses.push_back(std::move(status)); }
         //상태이상 확인
         std::vector<std::unique_ptr<StatusEffect>>& getMutableStatuses() { return statuses; }
+
+        ElementType getElement() const { return element; }
 
         const std::string& getName() const { return name; }
         int getHp() const { return hp; }
@@ -225,11 +256,45 @@ namespace textrpg::combat {
         }
     };
 
+    class Fireball : public Skill {
+    public:
+        std::string getName() const override { return "화염구"; }
+
+        // 스킬 속성을 '불'로 덮어쓰기
+        ElementType getElement() const override { return ElementType::Fire; }
+
+        std::unique_ptr<Skill> clone() const override {
+            return std::make_unique<Fireball>(*this);
+        }
+
+        void execute(CombatActor actor, Combatant& attacker, Combatant& target, CombatResult& result) const override {
+            // 1. 공격 속성과 타겟 속성을 비교해 배율 획득
+            float multiplier = getElementMultiplier(this->getElement(), target.getElement());
+
+            // 2. 데미지 계산 (기본 데미지 * 상성 배율)
+            int baseDamage = attacker.getAttack();
+            int finalDamage = static_cast<int>(baseDamage * multiplier);
+
+            int actualDamage = target.receiveDamage(finalDamage);
+
+            // 3. 상성에 따른 텍스트 연출 추가
+            std::string effText = "";
+            if (multiplier > 1.0f) effText = " (효과가 굉장했다!)";
+            else if (multiplier < 1.0f) effText = " (효과가 별로인 것 같다...)";
+
+            std::string desc = attacker.getName() + "의 [" + getName() + "]! " +
+                std::to_string(actualDamage) + "의 피해를 입혔습니다!" + effText;
+
+            result.turns.push_back(CombatTurn{ actor, SkillType::Attack, actualDamage, target.getHp(), std::move(desc) });
+        }
+    };
+
     inline Combatant makeDefaultPlayer() {
         Combatant player{ "플레이어", 999, 9, 0, 10 };
         player.addSkill(std::make_unique<BasicAttack>());
         player.addSkill(std::make_unique<CriticalHit>());
         player.addSkill(std::make_unique<PoisonSkill>());
+        player.addSkill(std::make_unique<Fireball>());
         return player;
     }
 
@@ -237,6 +302,8 @@ namespace textrpg::combat {
         if (name.empty()) {
             name = "몬스터";
         }
+        //풀타입으로 만들기
+        //Combatant monster{ std::move(name), 10, 1, 0, 8, ElementType::Grass };
         Combatant monster{ std::move(name), 10, 1, 0, 8 };
         monster.addSkill(std::make_unique<BasicAttack>());
         return monster;
