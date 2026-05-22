@@ -69,6 +69,35 @@ namespace textrpg::combat {
                 second->getSkills()[secondSkillIdx]->execute(secondActor, *second, *first, result);
                 std::cout << result.turns.back().description << "\n";
             }
+            // 6.상태 이상 처리
+            auto processStatuses = [&](CombatActor actor, Combatant& c) 
+                {
+                if (c.isDead()) return;
+                auto& statuses = c.getMutableStatuses();
+                for (auto it = statuses.begin(); it != statuses.end(); ) 
+                {
+                    // 효과 발동 및 출력
+                    (*it)->onTurnEnd(actor, c, result);
+                    std::cout << result.turns.back().description << "\n";
+
+                    // 턴 수(duration) 감소
+                    (*it)->tick();
+
+                    // 수명이 다했으면 벡터에서 제거, 아니면 다음 상태이상으로 넘어감
+                    if ((*it)->isExpired()) 
+                    {
+                        it = statuses.erase(it);
+                    }
+                    else 
+                    {
+                        ++it;
+                    }
+                }
+                };
+
+            // 플레이어와 몬스터의 상태 이상을 각각 처리
+            processStatuses(CombatActor::Player, player);
+            processStatuses(CombatActor::Monster, monster);
 
             std::cout << "----------------------------------------\n";
         }
