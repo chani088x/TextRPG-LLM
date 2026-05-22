@@ -2,27 +2,13 @@
 
 #include "combat/CombatTypes.hpp"
 
-namespace textrpg::combat {
-
-class CombatSystem {
-public:
-    CombatResult run(Combatant player, Combatant monster) const;
-    CombatResult runRound(
-        Combatant player,
-        Combatant monster,
-        CombatActionType playerAction = CombatActionType::Attack,
-        int customDamage = 0,
-        const std::string& customDescription = {}) const;
-    CombatResult runMonsterTurn(Combatant player, Combatant monster) const;
-private:
-    void applyAction(
-        CombatActor actor,
-        Combatant& attacker,
-        Combatant& target,
-        CombatActionType type,
-        CombatResult& result,
-        int customDamage = 0,
-        const std::string& customDescription = {}) const;
-};
+namespace textrpg::combat
+{
+    class CombatSystem
+    {
+    public:
+        // 콘솔 입력을 직접 받던 run 함수 대신, 유저가 UI에서 선택한 스킬 인덱스를 받아 1라운드를 해결함
+        CombatResult runRound(Combatant& player, Combatant& monster, int playerSkillIndex) const;
+    };
 
 } // namespace textrpg::combat

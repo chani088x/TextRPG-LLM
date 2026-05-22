@@ -1,100 +1,75 @@
 #include "combat/CombatSystem.hpp"
-
-#include <algorithm>
+#include <iostream>
+#include <string>
+#include <cstdlib>
 
 namespace textrpg::combat {
 
-void CombatSystem::applyAction(
-    CombatActor actor,
-    Combatant& attacker,
-    Combatant& target,
-    CombatActionType type,
-    CombatResult& result,
-    int customDamage,
-    const std::string& customDescription) const
-{
-    int damage = 0;
-    std::string desc;
+    CombatResult CombatSystem::runRound(Combatant& player, Combatant& monster, int playerSkillIndex) const
+    {
+        CombatResult result;
 
-    if (type == CombatActionType::Attack) {
-        damage = attacker.getAttack();
-        const int actualDamage = target.receiveDamage(damage);
-        damage = actualDamage;
-        desc = attacker.getName() + "이(가) " + std::to_string(actualDamage) + "의 피해를 입혔습니다.";
-    } else if (type == CombatActionType::Custom) {
-        damage = std::max(1, customDamage);
-        const int actualDamage = target.receiveDamage(damage);
-        damage = actualDamage;
-        desc = customDescription.empty()
-            ? attacker.getName() + "의 고유 행동이 " + std::to_string(actualDamage) + "의 피해를 입혔습니다."
-            : customDescription + " " + std::to_string(actualDamage) + "의 피해를 입혔습니다.";
-    }
-
-    result.turns.push_back(CombatTurn {actor, type, damage, target.getHp(), std::move(desc)});
-}
-
-CombatResult CombatSystem::runRound(
-    Combatant player,
-    Combatant monster,
-    CombatActionType playerAction,
-    int customDamage,
-    const std::string& customDescription) const
-{
-    CombatResult result;
-
-    if (!player.isDead() && !monster.isDead()) {
-        applyAction(CombatActor::Player, player, monster, playerAction, result, customDamage, customDescription);
-    }
-
-    if (monster.isDead()) {
-        result.finished = true;
-        result.winner = CombatWinner::Player;
-    } else if (!player.isDead()) {
-        applyAction(CombatActor::Monster, monster, player, CombatActionType::Attack, result);
-        if (player.isDead()) {
-            result.finished = true;
-            result.winner = CombatWinner::Monster;
+        // 1. 몬스터 스킬은 무작위로 선택
+        int mChoice = 0;
+        if (!monster.getSkills().empty()) {
+            mChoice = std::rand() % monster.getSkills().size();
         }
-    }
 
-    result.player = std::move(player);
-    result.monster = std::move(monster);
-    return result;
-}
+        // 2. 스피드 비교를 이용한 포켓몬 스타일 선공 결정
+        bool playerGoesFirst = player.getSpeed() >= monster.getSpeed();
 
-CombatResult CombatSystem::runMonsterTurn(Combatant player, Combatant monster) const
-{
-    CombatResult result;
+        Combatant* first = playerGoesFirst ? &player : &monster;
+        Combatant* second = playerGoesFirst ? &monster : &player;
 
-    if (!player.isDead() && !monster.isDead()) {
-        applyAction(CombatActor::Monster, monster, player, CombatActionType::Attack, result);
-        if (player.isDead()) {
-            result.finished = true;
-            result.winner = CombatWinner::Monster;
+        CombatActor firstActor = playerGoesFirst ? CombatActor::Player : CombatActor::Monster;
+        CombatActor secondActor = playerGoesFirst ? CombatActor::Monster : CombatActor::Player;
+
+        int firstSkillIdx = playerGoesFirst ? playerSkillIndex : mChoice;
+        int secondSkillIdx = playerGoesFirst ? mChoice : playerSkillIndex;
+
+        // 3. 선공 행동 실행
+        if (!first->getSkills().empty() && firstSkillIdx >= 0 && firstSkillIdx < first->getSkills().size()) {
+            first->getSkills()[firstSkillIdx]->execute(firstActor, *first, *second, result);
         }
+
+        // 4. 후공 행동 실행 (선공 공격에 의해 죽지 않았을 때만 실행)
+        if (!second->isDead() && !second->getSkills().empty() && secondSkillIdx >= 0 && secondSkillIdx < second->getSkills().size()) {
+            second->getSkills()[secondSkillIdx]->execute(secondActor, *second, *first, result);
+        }
+
+        // 5. 라운드 종료 시 상태이상 처리
+        auto processStatuses = [&](CombatActor actor, Combatant& c) {
+            if (c.isDead()) return;
+            auto& statuses = c.getMutableStatuses();
+            for (auto it = statuses.begin(); it != statuses.end(); ) {
+                (*it)->onTurnEnd(actor, c, result);
+                (*it)->tick();
+
+                if ((*it)->isExpired()) {
+                    it = statuses.erase(it);
+                }
+                else {
+                    ++it;
+                }
+            }
+            };
+
+        processStatuses(CombatActor::Player, player);
+        processStatuses(CombatActor::Monster, monster);
+
+        // 6. 결과 정산 및 상태 백업
+        result.player = player;
+        result.monster = monster;
+
+        if (player.isDead() || monster.isDead()) {
+            result.finished = true;
+            result.winner = (!player.isDead()) ? CombatWinner::Player : CombatWinner::Monster;
+        }
+        else {
+            result.finished = false;
+        }
+
+        return result;
     }
-
-    result.player = std::move(player);
-    result.monster = std::move(monster);
-    return result;
-}
-
-CombatResult CombatSystem::run(Combatant player, Combatant monster) const
-{
-    CombatResult result;
-
-    while (!player.isDead() && !monster.isDead()) {
-        auto round = runRound(player, monster);
-        result.turns.insert(result.turns.end(), round.turns.begin(), round.turns.end());
-        player = std::move(round.player);
-        monster = std::move(round.monster);
-    }
-
-    result.finished = true;
-    result.winner = (!player.isDead()) ? CombatWinner::Player : CombatWinner::Monster;
-    result.player = std::move(player);
-    result.monster = std::move(monster);
-    return result;
-}
 
 } // namespace textrpg::combat
