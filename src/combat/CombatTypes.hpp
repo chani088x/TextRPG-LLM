@@ -7,10 +7,9 @@
 
 namespace textrpg::combat {
 
-enum class SkillType {
+enum class CombatActionType {
     Attack,
-    Defend,
-    Draw //추후에 덱 시스템 완성시 사용
+    Custom
 };
 
 enum class CombatActor {
@@ -74,13 +73,14 @@ public:
 
 struct CombatTurn {
     CombatActor actor = CombatActor::Player;
-    SkillType type;
+    CombatActionType type = CombatActionType::Attack;
     int damage = 0;
     int targetHpAfter = 0;
     std::string description; //행동 설명
 };
 
 struct CombatResult {
+    bool finished = false;
     CombatWinner winner = CombatWinner::Player;
     Combatant player;
     Combatant monster;

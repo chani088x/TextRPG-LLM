@@ -2,10 +2,6 @@ cmake_minimum_required(VERSION 3.20)
 
 project(LLM_TextRPG_v2 LANGUAGES CXX)
 
-include(CTest)
-
-find_package(CURL REQUIRED)
-
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -14,16 +10,20 @@ if(MSVC)
     add_compile_options(/utf-8)
 endif()
 
+find_package(ftxui CONFIG REQUIRED)
+
 add_library(llm_module
     src/llm/LLM.cpp
-    src/llm/OpenAIChatClient.cpp
     src/llm/OllamaChatClient.cpp
     src/llm/PromptBuilder.cpp
+    src/llm/RagContext.cpp
+    src/llm/RecordStore.cpp
     src/llm/ResponseParser.cpp
     src/llm/StateApplier.cpp
 )
 
 add_library(game_module
+    src/game/DangerSystem.cpp
     src/game/Item.cpp
     src/game/Equipment.cpp
     src/game/Consumable.cpp
@@ -33,6 +33,11 @@ add_library(game_module
 
 add_library(combat_module
     src/combat/CombatSystem.cpp
+    src/combat/CombatResolver.cpp
+)
+
+add_library(npc_module
+    src/NPC/NPCManager.cpp
 )
 
 target_include_directories(game_module
@@ -48,6 +53,15 @@ target_include_directories(combat_module
         ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
 
+target_link_libraries(combat_module PUBLIC game_module)
+
+target_include_directories(npc_module
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+
+target_link_libraries(npc_module PUBLIC llm_module)
+
 target_include_directories(llm_module
     PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/src
@@ -59,10 +73,10 @@ if(WIN32)
     target_link_libraries(llm_module PUBLIC ws2_32)
 endif()
 
-target_link_libraries(llm_module PUBLIC CURL::libcurl)
-
 add_executable(llm_text_rpg
     main.cpp
+    src/app/CliView.cpp
+    src/app/TextRpgApp.cpp
 )
 
 target_link_libraries(llm_text_rpg
@@ -70,17 +84,18 @@ target_link_libraries(llm_text_rpg
         game_module
         llm_module
         combat_module
+        npc_module
+        ftxui::screen
+        ftxui::dom
+        ftxui::component
 )
 
-if(BUILD_TESTING)
-    add_executable(llm_engine_tests
-        tests/test_llm_engine.cpp
-    )
-
-    target_link_libraries(llm_engine_tests
-        PRIVATE
-            llm_module
-    )
-
-    add_test(NAME llm_engine_tests COMMAND $<TARGET_FILE:llm_engine_tests>)
-endif()
+add_custom_command(TARGET llm_text_rpg POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:llm_text_rpg>/data"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/data/game_state.json"
+        "${CMAKE_CURRENT_SOURCE_DIR}/data/game_records.example.json"
+        "${CMAKE_CURRENT_SOURCE_DIR}/data/config.json"
+        "${CMAKE_CURRENT_SOURCE_DIR}/data/start_art_4x3.txt"
+        "$<TARGET_FILE_DIR:llm_text_rpg>/data"
+)

@@ -8,16 +8,13 @@
 namespace textrpg::llm {
 
 enum class LLMProvider {
-    OpenAI,
     Ollama
 };
 
 struct LLMOptions {
-    LLMProvider provider = LLMProvider::OpenAI;
+    LLMProvider provider = LLMProvider::Ollama;
     std::string endpoint;
     std::string model;
-    std::string apiKey;
-    std::string organization;
     double temperature = 0.7;
     bool think = false;
     int connectionTimeoutSeconds = 10;
@@ -35,14 +32,17 @@ public:
     explicit LLM(LLMOptions options = {});
     explicit LLM(std::shared_ptr<IChatClient> chatClient);
 
+    Prologue generatePrologue(GameState& state) const;
     GameEvent generateEvent(GameState& state, const std::string& playerInput) const;
     GameEvent generateNextEvent(GameState& state, const std::string& actionContext) const;
+    GameEvent generateNonCombatEvent(GameState& state, const std::string& actionContext) const;
     GameEvent generateCombatEvent(GameState& state, const std::string& actionContext) const;
     GameEvent generateStoryEvent(GameState& state, const std::string& actionContext) const;
     ActionResult generateActionResult(
         GameState& state,
         const std::string& customInput,
         const std::string& diceOutcome) const;
+    ElderDialogueResult generateElderDialogue(GameState& state) const;
     InitialWorld generateInitialWorld(GameState& state) const;
 
 private:
