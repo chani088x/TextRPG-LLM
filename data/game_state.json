@@ -1,0 +1,26 @@
+{
+  "turn_number": 1,
+  "current_scene": "낯선 길 위에서 첫 여정이 시작된다.",
+  "player": {
+    "hp": 999,
+    "max_hp": 999,
+    "level": 1,
+    "attack": 9,
+    "defense": 0,
+    "gold": 12,
+    "exp": 0
+  },
+  "world": {
+    "location": "이름 없는 길",
+    "current_objective": "현재 장소의 단서를 확인한다",
+    "decision_hint": "정보를 모을지, 빠르게 이동할지 판단해야 한다",
+    "base_candidate": false,
+    "fixed_rules": [
+      "배경은 중세 판타지 세계다.",
+      "현대 기술과 총기는 등장하지 않는다.",
+      "플레이어를 즉사시키지 않는다.",
+      "전투 계산과 보상 확정은 C++ 엔진이 담당한다."
+    ]
+  },
+  "starting_items": []
+}
