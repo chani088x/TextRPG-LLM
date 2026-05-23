@@ -1,0 +1,65 @@
+{
+  "version": 1,
+  "snapshot": {
+    "saved": false,
+    "turn_number": 1,
+    "current_scene": "",
+    "player": {
+      "hp": 100,
+      "max_hp": 100,
+      "level": 1,
+      "attack": 10,
+      "defense": 5,
+      "gold": 0,
+      "exp": 0,
+      "inventory": []
+    },
+    "world": {
+      "location": "",
+      "current_objective": "",
+      "decision_hint": "",
+      "base_candidate": false,
+      "fixed_rules": []
+    },
+    "memory": {
+      "recent_events": [],
+      "important_choices": []
+    }
+  },
+  "quest_log": [],
+  "obtained_items": [],
+  "encountered_enemies": [],
+  "event_history": [],
+  "prologue": {
+    "generated": false,
+    "text": "",
+    "protagonist_wound": "",
+    "personal_goal": "",
+    "opening_location": "",
+    "first_clue": "",
+    "memory_note": "",
+    "used_fallback": false
+  },
+  "danger": {
+    "level": 0,
+    "last_increase": 0,
+    "threshold": 10
+  },
+  "base": {
+    "unlocked": false,
+    "location": "",
+    "features": [],
+    "declined_locations": []
+  },
+  "elder": {
+    "introduced": false,
+    "talked": false
+  },
+  "boss": {
+    "known": false,
+    "name": "",
+    "location": "",
+    "weakness": "",
+    "description": ""
+  }
+}
