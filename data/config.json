@@ -1,0 +1,14 @@
+{
+  "llm": {
+    "provider": "ollama",
+    "endpoint": "http://localhost:11434",
+    "model": "aravhawk/gemma4:26b",
+    "temperature": 0.7,
+    "think": false,
+    "connection_timeout_seconds": 10,
+    "read_timeout_seconds": 300
+  },
+  "game_data_path": "data/game_state.json",
+  "records_json_path": "data/game_records.json",
+  "scripted_inputs": []
+}
