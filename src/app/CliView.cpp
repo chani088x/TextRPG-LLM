@@ -277,8 +277,11 @@ std::vector<ftxui::Element> choiceRows(const ActionInputInfo& info)
 {
     std::vector<std::string> choices;
     if (info.combatActive) {
-        choices = {"1. 공격", "2. 아이템"};
-    } else {
+        if (!info.waitingForSkillSelection) { // 대기 중이 아닐 때만 출력
+            choices = { "1. 공격", "2. 아이템" };
+        }
+    }
+    else {
         int index = 1;
         if (info.canTalkToElder) {
             choices.push_back(std::to_string(index++) + ". 장로와 대화");
@@ -1008,15 +1011,30 @@ TurnViewResult CliView::runActionTurn(
                     screen.Exit();
                     return true;
                 }
+
                 {
                     std::lock_guard<std::mutex> lock(resultMutex);
                     currentInfo = finalResult.status;
-                    prepareResultReveal(finalResult.body);
+                    // 스킵 모드가 아닐 때만 결과 텍스트를 준비합니다.
+                    if (!finalResult.skipReveal) {
+                        prepareResultReveal(finalResult.body);
+                    }
                 }
-                renderState.mode = TurnScreenMode::Revealing;
-                renderState.followBottom = true;
+
+                // --- 여기서 화면 모드를 결정합니다 ---
+                if (finalResult.skipReveal) {
+                    // 결과창(엔터 누르기) 화면을 스킵하고 바로 입력창 활성화
+                    renderState.mode = TurnScreenMode::Input;
+                    input.clear();
+                    renderState.notice.clear();
+                }
+                else {
+                    renderState.mode = TurnScreenMode::Revealing;
+                    renderState.followBottom = true;
+                }
+                // ------------------------------------
+                return true;
             }
-            return true;
         }
 
         if (event.is_mouse()) {

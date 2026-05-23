@@ -566,8 +566,17 @@ namespace textrpg::app {
                             return result;
                         }
 
+                        // --- 수정된 부분 ---
+                        bool wasWaiting = waitingForSkillSelection_; // 턴 실행 전의 상태 저장
+
                         result.body = executeTurn(input, true, gameEnded);
                         result.status = makeActionInputInfo();
+
+                        // 방금 스킬 메뉴로 전환된 것이라면 결과창 연출 스킵
+                        if (!wasWaiting && waitingForSkillSelection_) {
+                            result.skipReveal = true;
+                        }
+                        // -------------------
                         return result;
                     });
 
@@ -796,6 +805,11 @@ namespace textrpg::app {
 
     void TextRpgApp::printChoiceMenu() const
     {
+        if (waitingForSkillSelection_) {
+            std::cout << "\n번호를 고르거나 직접 문장으로 적으세요. (종료: q)\n";
+            return;
+        }
+
         std::vector<std::string> choices;
         if (combat_.isActive()) {
             choices = {
@@ -1039,6 +1053,7 @@ namespace textrpg::app {
         ActionInputInfo info;
         info.turnNumber = state_.turnNumber;
         info.combatActive = combat_.isActive();
+        info.waitingForSkillSelection = waitingForSkillSelection_;
         info.canTalkToElder = canTalkToElder();
         info.canSetBase = canSetBaseHere();
         info.canUseBaseServices = canUseBaseServices();

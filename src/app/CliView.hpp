@@ -17,6 +17,7 @@ enum class StartMenuChoice {
 struct ActionInputInfo {
     int turnNumber = 0;
     bool combatActive = false;
+    bool waitingForSkillSelection = false;
     bool canTalkToElder = false;
     bool canSetBase = false;
     bool canUseBaseServices = false;
@@ -51,6 +52,7 @@ struct TurnViewResult {
     ActionInputInfo status;
     std::string body;
     bool exitRequested = false;
+    bool skipReveal = false;
 };
 
 class CliView {
