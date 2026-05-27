@@ -1,6 +1,7 @@
 #include "app/TextRpgApp.hpp"
 
 #include "app/CliView.hpp"
+#include "app/SoundManager.hpp"
 #include "combat/CombatResolver.hpp"
 #include "game/DangerSystem.hpp"
 #include "game/Inventory.hpp"
@@ -523,6 +524,9 @@ int TextRpgApp::run()
         restoredSavedState = restoreSavedState();
     }
 
+    // 게임 진입 시 BGM 루프 재생
+    SoundManager::instance().playBGM("data/sound/bgm.wav");
+
     if (!restoredSavedState) {
         if (config_.scriptedInputs.empty()) {
             view_.runWithLoadingScreen("첫 장면과 현재 세계를 만들고 있습니다.", [&] {
@@ -760,16 +764,20 @@ void TextRpgApp::printEvent(const GameEvent& event) const
             std::cout << cleanDisplayText(monster.description) << '\n';
         }
     }
+    if (event.item.has_value()) {
+        SoundManager::instance().playItemGain();
+    }
     std::cout << formatItemGain(event.item);
-
 }
 
 void TextRpgApp::printActionResult(const ActionResult& result) const
 {
     std::cout << '\n';
     printLineByLine(cleanDisplayText(result.resultText));
+    if (result.item.has_value()) {
+        SoundManager::instance().playItemGain();
+    }
     std::cout << formatItemGain(result.item);
-
 }
 
 void TextRpgApp::printElderDialogue(const ElderDialogueResult& result) const
@@ -881,8 +889,12 @@ std::string TextRpgApp::executeTurn(const std::string& input, bool interactive, 
         diceOut << "d12: " << diceValue << " -> " << diceOutcomeToKorean(outcome);
 
         if (wasCombatActive) {
+            SoundManager::instance().playAttack();
             const auto result = combat_.resolveCustomAction(state_, playerAction.customText, outcome, diceValue);
             const auto displayText = result.logText.empty() ? result.actionContext : result.logText;
+            if (!combat_.isActive() && state_.player.hp > 0) {
+                SoundManager::instance().playVictory();
+            }
             state_.world.decisionHint = combat_.isActive()
                 ? "전투가 계속됩니다. 다음 행동을 고르세요."
                 : (state_.player.hp <= 0
@@ -928,6 +940,9 @@ std::string TextRpgApp::executeTurn(const std::string& input, bool interactive, 
         if (wasCombatActive) {
             const auto displayText = cleanDisplayText(actionContext);
             if (playerAction.combatChoice.has_value()) {
+                if (!combat_.isActive() && state_.player.hp > 0) {
+                    SoundManager::instance().playVictory();
+                }
                 state_.world.decisionHint = combat_.isActive()
                     ? "전투가 계속됩니다. 다음 행동을 고르세요."
                     : (state_.player.hp <= 0
@@ -983,6 +998,9 @@ std::string TextRpgApp::executeTurn(const std::string& input, bool interactive, 
     saveRecordsJson();
     if (interactive) {
         appendUiBlock(turnResult, "스토리", formatEventForUi(event, hasMainObjective(state_.records)));
+        if (event.item.has_value()) {
+            SoundManager::instance().playItemGain();
+        }
         appendUiBlock(turnResult, "획득", formatItemGain(event.item));
         const auto statText = formatStatChanges(visibleChanges);
         if (!statText.empty()) {
@@ -1200,6 +1218,7 @@ std::string TextRpgApp::resolveDefaultAction(const PlayerAction& action)
 {
     if (action.combatChoice.has_value()) {
         if (*action.combatChoice == CombatChoice::Attack) {
+            SoundManager::instance().playAttack();
             const auto result = combat_.resolvePlayerAttack(state_);
             return result.logText.empty() ? result.actionContext : result.logText;
         }

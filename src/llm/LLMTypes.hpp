@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <cassert>
 #include <optional>
 #include <string>
 #include <vector>
@@ -22,10 +23,12 @@ inline constexpr const char* GameEnd = "game_end";
 } // namespace event
 
 namespace item {
-inline constexpr const char* Weapon = "weapon";
-inline constexpr const char* Armor = "armor";
-inline constexpr const char* Consumable = "consumable";
-inline constexpr const char* QuestItem = "quest_item";
+// 아래 상수는 LLM JSON의 item.type 필드와 1:1로 맞춰진다.
+// isKnownItemType() / normalizeItemType() / sanitizeItem()에서 사용된다.
+inline constexpr const char* Weapon = "weapon";      // 전투 관련 무기류
+inline constexpr const char* Armor = "armor";        // 방어력 관련 방어구류
+inline constexpr const char* Consumable = "consumable"; // 사용 시 소모되는 아이템 (포션 등)
+inline constexpr const char* QuestItem = "quest_item";  // 퀘스트 진행용 특수 아이템
 } // namespace item
 
 namespace dice {
@@ -57,11 +60,12 @@ struct Monster {
 };
 
 // item_gain 이벤트에서 엔진이 인벤토리에 넘길 수 있는 최소 아이템 정보다.
+// LLM JSON → 파싱 → sanitizeItem() 보정 → GameEvent::item / GameRecords::obtainedItems에 저장된다.
 struct Item {
-    std::string name;
-    std::string type = ids::item::Consumable;
-    std::string description;
-    int value = 0;
+    std::string name;                              // 아이템 이름 (인벤토리·UI 표시에 사용)
+    std::string type = ids::item::Consumable;      // ids::item::* 상수 중 하나. 허용 외 값은 sanitizeItem()이 Consumable로 보정
+    std::string description;                       // 아이템 설명 (플레이어에게 표시)
+    int value = 0;                                 // 아이템 가치. sanitizeItem()에서 타입별 상한으로 clamp됨
 };
 
 // LLM이 제안할 수 있는 상태 변화다. 파싱 단계에서 안전 범위로 제한한다.
@@ -171,6 +175,8 @@ struct PlayerSnapshot {
     int defense = 5;
     int gold = 0;
     int exp = 0;
+    // 플레이어 보유 아이템 목록. item_gain 이벤트 처리 후 GameEngine이 push_back한다.
+    // 프롬프트 빌더에서 최신 N개만 컨텍스트에 포함해 토큰 낭비를 방지한다.
     std::vector<Item> inventory;
 };
 
@@ -334,14 +340,20 @@ inline bool descriptionImpliesPower(const std::string& description)
     });
 }
 
+// LLM이 반환한 Item을 게임 규칙에 맞게 보정한다.
+// 파싱 직후 호출해 GameEvent::item / ActionResult::item에 담기 전에 정제한다.
+// notes가 non-null이면 수정 내역을 기록해 디버깅·로깅에 활용할 수 있다.
 inline void sanitizeItem(Item& item, std::vector<std::string>* notes = nullptr)
 {
+    // 허용 목록 외 type 문자열은 Consumable로 정규화한다.
     const auto rawType = item.type;
     item.type = normalizeItemType(item.type);
     if (notes && rawType != item.type) {
         notes->push_back("item type was invalid and repaired");
     }
 
+    // 이름이 퀘스트 아이템 키워드를 포함하면 타입을 강제로 QuestItem으로 바꾼다.
+    // LLM이 단서 아이템을 Consumable로 잘못 분류하는 경우를 방지한다.
     if (isQuestLikeItemName(item.name) && item.type != ids::item::QuestItem) {
         item.type = ids::item::QuestItem;
         if (notes) {
@@ -350,10 +362,12 @@ inline void sanitizeItem(Item& item, std::vector<std::string>* notes = nullptr)
     }
 
     if (item.type == ids::item::QuestItem) {
+        // QuestItem은 value가 의미 없다 — 0으로 강제해 밸런스 우회를 막는다.
         if (item.value != 0 && notes) {
             notes->push_back("quest_item value was forced to 0");
         }
         item.value = 0;
+        // 설명에 전투·강화 키워드가 있으면 밸런스를 해치므로 중립 문장으로 교체한다.
         if (descriptionImpliesPower(item.description)) {
             item.description = "진행 단서로 쓰이는 평범한 물건이다.";
             if (notes) {
@@ -361,6 +375,7 @@ inline void sanitizeItem(Item& item, std::vector<std::string>* notes = nullptr)
             }
         }
     } else if (item.type == ids::item::Consumable) {
+        // Consumable 상한 20, 그 외(Weapon/Armor) 상한 30으로 value를 clamp한다.
         item.value = std::max(0, std::min(item.value, 20));
     } else {
         item.value = std::max(0, std::min(item.value, 30));
@@ -421,8 +436,12 @@ inline std::string joinIds(const std::vector<std::string>& values, const std::st
     return joined;
 }
 
+// value를 [low, high] 범위로 제한한다. sanitizeItem() 및 각종 수치 보정에 사용된다.
+// [버그 수정] low > high이면 결과가 항상 low가 되어 조용히 오작동한다.
+// assert로 잘못된 호출을 즉시 감지할 수 있도록 수정했다.
 inline int clampInt(int value, int low, int high)
 {
+    assert(low <= high && "clampInt: low must be <= high");
     return std::max(low, std::min(value, high));
 }
 

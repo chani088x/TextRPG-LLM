@@ -160,6 +160,12 @@ namespace textrpg::combat {
         const std::vector<std::unique_ptr<Skill>>& getSkills() const { return skills; }
     };
 
+    // CombatResolver::resolveCustomAction에서 고유 행동 유형을 구분하는 데 사용한다.
+    enum class CombatActionType {
+        Normal, // 기본 공격
+        Custom  // 플레이어 고유 행동 (d12 판정 결과 적용)
+    };
+
     //전투 기록 및 결과 구조체
     struct CombatTurn {
         CombatActor actor = CombatActor::Player;
@@ -171,6 +177,9 @@ namespace textrpg::combat {
 
     struct CombatResult {
         CombatWinner winner = CombatWinner::Player;
+        // true = 이번 라운드에서 전투가 종료됨 (한쪽이 사망)
+        // false = 전투가 아직 진행 중
+        bool finished = false;
         Combatant player;
         Combatant monster;
         std::vector<CombatTurn> turns;

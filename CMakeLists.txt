@@ -90,12 +90,21 @@ target_link_libraries(llm_text_rpg
         ftxui::component
 )
 
+# Windows에서 PlaySound(winmm) 사용
+if(WIN32)
+    target_link_libraries(llm_text_rpg PRIVATE winmm)
+endif()
+
 add_custom_command(TARGET llm_text_rpg POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:llm_text_rpg>/data"
+    COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:llm_text_rpg>/data/sound"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "${CMAKE_CURRENT_SOURCE_DIR}/data/game_state.json"
         "${CMAKE_CURRENT_SOURCE_DIR}/data/game_records.example.json"
         "${CMAKE_CURRENT_SOURCE_DIR}/data/config.json"
         "${CMAKE_CURRENT_SOURCE_DIR}/data/start_art_4x3.txt"
         "$<TARGET_FILE_DIR:llm_text_rpg>/data"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${CMAKE_CURRENT_SOURCE_DIR}/data/sound"
+        "$<TARGET_FILE_DIR:llm_text_rpg>/data/sound"
 )
