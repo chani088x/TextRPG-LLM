@@ -2,7 +2,7 @@
   "llm": {
     "provider": "ollama",
     "endpoint": "http://localhost:11434",
-    "model": "aravhawk/gemma4:26b",
+    "model": "gemma4:e4b",
     "temperature": 0.7,
     "think": false,
     "connection_timeout_seconds": 10,

@@ -221,7 +221,7 @@ struct GameRecords {
     struct DangerState {
         int level = 0;
         int lastIncrease = 0;
-        int threshold = 10;
+        int threshold = 30;
     } danger;
     struct BaseState {
         bool unlocked = false;

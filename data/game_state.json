@@ -2,10 +2,10 @@
   "turn_number": 1,
   "current_scene": "낯선 길 위에서 첫 여정이 시작된다.",
   "player": {
-    "hp": 999,
-    "max_hp": 999,
+    "hp": 400,
+    "max_hp": 400,
     "level": 1,
-    "attack": 9,
+    "attack": 10,
     "defense": 0,
     "gold": 12,
     "exp": 0

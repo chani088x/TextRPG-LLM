@@ -203,6 +203,7 @@ std::string PromptBuilder::buildNextEventPrompt(const GameState& state, const st
     out << "- 같은 유형의 이벤트를 반복하더라도 최근 사건과 현재 실마리에 맞는 새 정보나 변화를 준다.\n";
     out << "- location은 이번 장면의 현재 지역명이다. 이동/진행이 일어나면 새 지역명으로 바꾸고, 같은 장소면 현재 위치를 유지한다.\n";
     out << "- combat을 선택할 때만 monster 객체를 name, description, hp, attack, defense로 채우고, 다른 event_type에서는 monster를 null로 둔다.\n";
+    out << "- 플레이어가 위 '보스 정보'의 보스 위치에 도달해 최종 위협과 직접 맞붙는 장면이면 반드시 combat을 선택하고, monster.name을 보스 이름과 정확히 동일하게 쓴다. 보스전이 아닌 일반 전투에는 보스 이름을 쓰지 않는다.\n";
     out << "- item_gain을 선택할 때는 item 객체를 채우고, 다른 event_type에서는 꼭 필요한 경우가 아니면 item을 null로 둔다.\n\n";
     out << "- base_candidate는 이번 장면의 현재 location을 기준으로 판단한다. 장소 이름에 마을/성채가 들어가도 폐허나 지하감옥이면 false다.\n";
     out << "- dialogue를 선택할 때 scene_text는 줄마다 '화자: 대사' 형태로 쓴다.\n";

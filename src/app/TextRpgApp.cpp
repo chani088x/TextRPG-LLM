@@ -192,10 +192,10 @@ namespace textrpg::app {
             out << "위험도 판정: " << danger.previous << " + " << danger.increase
                 << " = " << danger.current << "/" << danger.threshold << ". ";
             if (danger.combatTriggered) {
-                out << "위험도가 10 이상이 되어 엔진이 전투 이벤트를 강제한다.";
+                out << "위험도가 30 이상이 되어 엔진이 전투 이벤트를 강제한다.";
             }
             else {
-                out << "위험도가 아직 10 미만이므로 combat 이벤트는 금지된다.";
+                out << "위험도가 아직 30 미만이므로 combat 이벤트는 금지된다.";
             }
             return out.str();
         }
@@ -596,7 +596,11 @@ namespace textrpg::app {
                     }
                 }
                 if (gameEnded) {
-                    std::cout << "\n게임 종료 이벤트가 발생했습니다.\n";
+                    std::cout << '\n'
+                        << (combat_.bossDefeated()
+                            ? "최종 보스를 물리쳤습니다. 당신의 모험이 막을 내립니다."
+                            : "게임 종료 이벤트가 발생했습니다.")
+                        << '\n';
                     return 0;
                 }
                 continue;
@@ -623,7 +627,11 @@ namespace textrpg::app {
             bool gameEnded = false;
             executeTurn(input, false, gameEnded);
             if (gameEnded) {
-                std::cout << "\n게임 종료 이벤트가 발생했습니다.\n";
+                std::cout << '\n'
+                    << (combat_.bossDefeated()
+                        ? "최종 보스를 물리쳤습니다. 당신의 모험이 막을 내립니다."
+                        : "게임 종료 이벤트가 발생했습니다.")
+                    << '\n';
                 return 0;
             }
 
@@ -939,10 +947,12 @@ namespace textrpg::app {
                     ? "전투가 계속됩니다. 다음 행동을 고르세요."
                     : (state_.player.hp <= 0
                         ? "전투에서 쓰러졌습니다."
-                        : "전투가 끝났습니다. 숨을 고르고 다음 행동을 정하세요.");
+                        : (combat_.bossDefeated()
+                            ? "최종 보스를 쓰러뜨렸습니다! 모험이 끝났습니다."
+                            : "전투가 끝났습니다. 숨을 고르고 다음 행동을 정하세요."));
                 ++state_.turnNumber;
                 saveRecordsJson();
-                gameEnded = state_.player.hp <= 0;
+                gameEnded = state_.player.hp <= 0 || combat_.bossDefeated();
 
                 if (interactive) {
                     appendUiBlock(turnResult, "판정", formatDiceRollForUi(diceValue, outcome));
@@ -992,14 +1002,16 @@ namespace textrpg::app {
                         ? "전투가 계속됩니다. 다음 행동을 고르세요."
                         : (state_.player.hp <= 0
                             ? "전투에서 쓰러졌습니다."
-                            : "전투가 끝났습니다. 숨을 고르고 다음 행동을 정하세요.");
+                            : (combat_.bossDefeated()
+                                ? "최종 보스를 쓰러뜨렸습니다! 모험이 끝났습니다."
+                                : "전투가 끝났습니다. 숨을 고르고 다음 행동을 정하세요."));
                     ++state_.turnNumber;
                 }
                 else if (!displayText.empty()) {
                     state_.world.decisionHint = displayText;
                 }
                 saveRecordsJson();
-                gameEnded = state_.player.hp <= 0;
+                gameEnded = state_.player.hp <= 0 || combat_.bossDefeated();
                 if (!interactive && !displayText.empty()) {
                     std::cout << "\n" << displayText << '\n';
                 }
@@ -1064,7 +1076,7 @@ namespace textrpg::app {
             }
         }
 
-        combat_.updateFromEvent(event);
+        combat_.updateFromEvent(event, state_.records.boss);
         gameEnded = event.eventType == ids::event::GameEnd;
 
         saveRecordsJson();

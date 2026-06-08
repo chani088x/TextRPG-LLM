@@ -288,7 +288,7 @@ GameRecords::DangerState dangerFromJson(const json& value)
 
     danger.level = clampInt(value.value("level", 0), 0, 999);
     danger.lastIncrease = clampInt(value.value("last_increase", 0), 0, 10);
-    danger.threshold = clampInt(value.value("threshold", 10), 1, 999);
+    danger.threshold = clampInt(value.value("threshold", 30), 1, 999);
     return danger;
 }
 
@@ -614,7 +614,7 @@ void mergeGameRecords(GameRecords& target, const GameRecords& source)
     if (source.prologue.generated) {
         target.prologue = source.prologue;
     }
-    if (source.danger.level > 0 || source.danger.lastIncrease > 0 || source.danger.threshold != 10) {
+    if (source.danger.level > 0 || source.danger.lastIncrease > 0 || source.danger.threshold != 30) {
         target.danger = source.danger;
     }
 

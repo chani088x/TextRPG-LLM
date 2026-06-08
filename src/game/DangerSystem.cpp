@@ -29,7 +29,7 @@ DangerAdvance DangerSystem::advanceTurn(llm::GameState& state) const
 {
     auto& danger = state.records.danger;
     if (danger.threshold <= 0) {
-        danger.threshold = 10;
+        danger.threshold = 30;
     }
 
     DangerAdvance result;
@@ -49,7 +49,7 @@ void DangerSystem::resetAfterCombat(llm::GameState& state) const
     state.records.danger.level = 0;
     state.records.danger.lastIncrease = 0;
     if (state.records.danger.threshold <= 0) {
-        state.records.danger.threshold = 10;
+        state.records.danger.threshold = 30;
     }
 }
 

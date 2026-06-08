@@ -36,7 +36,7 @@ struct ActionInputInfo {
     int gold = 0;
     int exp = 0;
     int danger = 0;
-    int dangerThreshold = 10;
+    int dangerThreshold = 30;
     std::vector<llm::Item> inventory;
     std::vector<std::string> recentEvents;
     std::vector<std::string> chatHistory;

@@ -97,6 +97,17 @@ namespace textrpg::combat {
             return 1;
         }
 
+        // 전투 몬스터가 알려진 최종 보스인지 판정한다.
+        // 오탐을 막기 위해 "몬스터 이름이 보스 이름 전체를 포함"하는 경우만 보스로 본다.
+        // (반대 방향 포함은 "고블린"이 "고블린 왕"의 일부가 되는 식의 오탐을 일으키므로 쓰지 않는다.)
+        bool monsterMatchesBoss(const std::string& monsterName, const llm::BossInfo& boss)
+        {
+            if (!boss.known || boss.name.empty() || monsterName.empty()) {
+                return false;
+            }
+            return monsterName.find(boss.name) != std::string::npos;
+        }
+
     } // namespace
 
     bool CombatResolver::isActive() const
@@ -104,10 +115,23 @@ namespace textrpg::combat {
         return activeMonsterLlmData_.has_value();
     }
 
-    void CombatResolver::updateFromEvent(const llm::GameEvent& event)
+    bool CombatResolver::bossDefeated() const
+    {
+        return bossDefeated_;
+    }
+
+    void CombatResolver::updateFromEvent(const llm::GameEvent& event, const llm::BossInfo& boss)
     {
         if (event.eventType == llm::ids::event::Combat && event.monster.has_value()) {
+            const bool startingNewCombat = !activeMonsterLlmData_.has_value();
             activeMonsterLlmData_ = event.monster;
+
+            // 새 전투를 시작하는 순간에만 보스 여부를 판정한다.
+            // (진행 중인 전투에서는 updateFromEvent가 다시 불리지 않지만, 안전하게 신규 시작에만 갱신)
+            if (startingNewCombat) {
+                bossFight_ = monsterMatchesBoss(event.monster->name, boss);
+                bossDefeated_ = false; // 이번 전투 결과로 다시 결정
+            }
 
             // 전투 세션 최초 생성 시 플레이어 소유 객체 구성
             if (!activePlayer_.has_value()) {
@@ -154,6 +178,9 @@ namespace textrpg::combat {
         state.player.hp = activePlayer_->getHp();
 
         if (result.finished) {
+            if (result.winner == CombatWinner::Player && bossFight_) {
+                bossDefeated_ = true; // 보스를 쓰러뜨림 → 엔진이 게임 종료를 직접 결정
+            }
             activeMonsterLlmData_.reset();
             activeMonster_.reset();
         }
@@ -207,6 +234,9 @@ namespace textrpg::combat {
         if (activePlayer_->isDead() || activeMonster_->isDead()) {
             finalResult.finished = true;
             finalResult.winner = (!activePlayer_->isDead()) ? CombatWinner::Player : CombatWinner::Monster;
+            if (finalResult.winner == CombatWinner::Player && bossFight_) {
+                bossDefeated_ = true; // 보스를 쓰러뜨림 → 엔진이 게임 종료를 직접 결정
+            }
             activeMonsterLlmData_.reset();
             activeMonster_.reset();
         }
@@ -265,6 +295,9 @@ namespace textrpg::combat {
             if (activePlayer_->isDead() || activeMonster_->isDead()) {
                 finalResult.finished = true;
                 finalResult.winner = (!activePlayer_->isDead()) ? CombatWinner::Player : CombatWinner::Monster;
+                if (finalResult.winner == CombatWinner::Player && bossFight_) {
+                    bossDefeated_ = true; // 보스를 쓰러뜨림 → 엔진이 게임 종료를 직접 결정
+                }
                 activeMonsterLlmData_.reset();
                 activeMonster_.reset();
             }
