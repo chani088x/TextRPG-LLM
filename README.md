@@ -88,6 +88,7 @@ Ollama 전용 빌드입니다. 외부 API 키는 필요 없습니다.
 
 - Visual Studio Build Tools 또는 Visual Studio의 C++ 빌드 도구
 - CMake 3.20 이상
+- vcpkg (ftxui 의존성 설치에 사용)
 - PowerShell
 
 1. 저장소 폴더로 이동합니다.
@@ -96,11 +97,13 @@ Ollama 전용 빌드입니다. 외부 API 키는 필요 없습니다.
 cd C:\Users\chase\Documents\GitHub\TextRPG-LLM
 ```
 
-2. CMake configure를 실행합니다.
+2. CMake configure를 실행합니다. ftxui는 vcpkg로 설치되므로 vcpkg toolchain 파일을 반드시 지정해야 합니다. (`C:/vcpkg`는 vcpkg 설치 경로이며 환경에 맞게 바꾸세요)
 
 ```powershell
-cmake -S . -B build-vcpkg
+cmake -S . -B build-vcpkg -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake
 ```
+
+> toolchain 파일을 지정하지 않으면 `find_package(ftxui)` 단계에서 `Could not find a package configuration file provided by "ftxui"` 오류가 납니다.
 
 3. Debug 빌드를 실행합니다.
 
